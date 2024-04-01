@@ -26,7 +26,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));
     checkCUDNN(cudnnSetTensor4dDescriptor(input_descriptor,
         /*format=*/CUDNN_TENSOR_NHWC,
-        /*dataType=*/CUDNN_DATA_FLOAT,
+        /*data_type=*/CUDNN_DATA_FLOAT,
         /*batch_size=*/1,
         /*channels=*/1,
         /*image_height=*/image.rows,
@@ -34,7 +34,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     cudnnFilterDescriptor_t kernel_descriptor;
     checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));
     checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,
-        /*dataType=*/CUDNN_DATA_FLOAT,
+        /*data_type=*/CUDNN_DATA_FLOAT,
         /*format=*/CUDNN_TENSOR_NCHW,
         /*out_channels=*/1,
         /*in_channels=*/1,
@@ -66,9 +66,9 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     checkCUDNN(cudnnCreateTensorDescriptor(&output_descriptor));
     checkCUDNN(cudnnSetTensor4dDescriptor(output_descriptor,
         /*format=*/CUDNN_TENSOR_NHWC,
-        /*dataType=*/CUDNN_DATA_FLOAT,
-        /*batch_size=*/1,
-        /*channels=*/1,
+        /*data_type=*/CUDNN_DATA_FLOAT,
+        /*batch_size=*/batch_size,
+        /*channels=*/channels,
         /*image_height=*/outputHeight,
         /*image_width=*/outputWidth));
     size_t workspace_bytes{ 0 };
@@ -77,8 +77,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         kernel_descriptor,
         convolution_descriptor,
         output_descriptor,
-        //   convolution_algorithm,
-        CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+        CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
         &workspace_bytes));
     std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
         << std::endl;
@@ -95,7 +94,6 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     cudaMalloc((void**)&d_output, image_bytes);
     cudaMemset(d_output, 0, image_bytes);
 
-    // clang-format off
     float h_kernel[kernel_size][kernel_size];
     for (int row = 0; row < kernel_size; row++) {
         for (int column = 0; column < kernel_size; column++) {

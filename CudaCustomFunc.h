@@ -21,7 +21,9 @@
   }
 
 void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE]);
+
 void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE]);
+
 void Convolution_Calculation_CUDA(float* h_input, const float* h_kernel, float* h_output,
     int input_width, int input_height, int kernel_size, int stride,
     int output_width, int output_height, int channels);

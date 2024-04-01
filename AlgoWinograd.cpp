@@ -26,7 +26,7 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));
     checkCUDNN(cudnnSetTensor4dDescriptor(input_descriptor,
         /*format=*/CUDNN_TENSOR_NHWC,
-        /*dataType=*/CUDNN_DATA_FLOAT,
+        /*data_type=*/CUDNN_DATA_FLOAT,
         /*batch_size=*/1,
         /*channels=*/1,
         /*image_height=*/image.rows,
@@ -35,7 +35,7 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     cudnnFilterDescriptor_t kernel_descriptor;
     checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));
     checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,
-        /*dataType=*/CUDNN_DATA_FLOAT,
+        /*data_type=*/CUDNN_DATA_FLOAT,
         /*format=*/CUDNN_TENSOR_NCHW,
         /*out_channels=*/1,
         /*in_channels=*/1,
@@ -70,9 +70,9 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     checkCUDNN(cudnnCreateTensorDescriptor(&output_descriptor));
     checkCUDNN(cudnnSetTensor4dDescriptor(output_descriptor,
         /*format=*/CUDNN_TENSOR_NHWC,
-        /*dataType=*/CUDNN_DATA_FLOAT,
-        /*batch_size=*/1,
-        /*channels=*/1,
+        /*data_type=*/CUDNN_DATA_FLOAT,
+        /*batch_size=*/batch_size,
+        /*channels=*/channels,
         /*image_height=*/height,
         /*image_width=*/width));
 
@@ -82,8 +82,7 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         kernel_descriptor,
         convolution_descriptor,
         output_descriptor,
-        //   convolution_algorithm,
-        CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED,
+        CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
         &workspace_bytes));
     std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
         << std::endl;
@@ -101,7 +100,6 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     cudaMalloc((void**)&d_output, image_bytes);
     cudaMemset(d_output, 0, image_bytes);
 
-    // clang-format off
     float h_kernel[kernel_size][kernel_size];
     for (int row = 0; row < kernel_size; ++row) {
         for (int column = 0; column < kernel_size; ++column) {
@@ -125,7 +123,7 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         kernel_descriptor,
         d_kernel,
         convolution_descriptor,
-        CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED,
+        CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
         d_workspace,
         workspace_bytes,
         &beta,
@@ -155,4 +153,5 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     cudnnDestroyConvolutionDescriptor(convolution_descriptor);
 
     cudnnDestroy(cudnn);
+    return;
 }
