@@ -21,7 +21,7 @@ __global__ void Convolution(float* input, const float* kernel, float* output,
     int output_width, int output_height);
 
 void Convolution_Calculation_CUDA(char* inputImgName, char* outputImgName, const float* h_kernel,
-    int kernel_size, int stride) {
+    int kernel_size, int stride, FILE* outputFile) {
     cv::Mat image = load_image(inputImgName);
     float* h_input = image.ptr<float>(0);
     cudaEvent_t start1, stop1;
@@ -33,8 +33,8 @@ void Convolution_Calculation_CUDA(char* inputImgName, char* outputImgName, const
     int input_width = image.cols;
     int channels = image.channels();
 
-    int output_width = input_width - kernel_size + 1;
-    int output_height = input_height - kernel_size + 1;
+    int output_width = input_width - kernel_size + 3;
+    int output_height = input_height - kernel_size + 3;
     long image_bytes = channels * output_height * output_width * sizeof(float);
     float* h_output = new float[image_bytes] { 0 };
 
@@ -62,8 +62,9 @@ void Convolution_Calculation_CUDA(char* inputImgName, char* outputImgName, const
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start1, stop1);
     printf("self run duration : %f s\n", milliseconds / 1000);
-    printf("self h_output");
-
+    //save data to file
+    fprintf(outputFile, "%f\n", milliseconds / 1000);
+    //save image
     save_image(outputImgName, h_output, output_height, output_width);
     // Cleanup
     cudaFree(d_input);
@@ -106,7 +107,9 @@ __global__ void Convolution(float* input, const float* kernel, float* output,
 
 
 int main(int argc, const char* argv[]) {
-
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_Data.txt", "a+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_Data.txt", "a+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_Data.txt", "a+");
     float kernel_template[KERNEL_SIZE][KERNEL_SIZE] = {
         // {0.111111, 0.111111, 0.111111},
         // {0.111111, 0.111111, 0.111111},
@@ -121,16 +124,16 @@ int main(int argc, const char* argv[]) {
     };
    printf("GEMM impl:\n");
    // Algo GEMM Testing
-   /*CudnnRuntimeAlgoGemn("input/Test_Image3.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image5.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
   // CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image5.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);*/
+   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
    //CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
   // CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
   // CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
@@ -170,15 +173,24 @@ int main(int argc, const char* argv[]) {
     }
     
     printf("Direct impl:\n");
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
-    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    Convolution_Calculation_CUDA("input/256x256.png", "output/256x256_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+
+    fclose(Algo_Direct_Data_File);
+    fclose(Algo_Gemm_Data_File);
+    fclose(Algo_Winograd_Data_File);
 }
 

@@ -16,7 +16,7 @@
 #include "CudaCustomFunc.h"
 
 
-void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE]) {
+void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE], FILE* outputFile) {
     cv::Mat image = load_image(imgName);
     const int kernel_size = KERNEL_SIZE;
     cudnnHandle_t cudnn;
@@ -105,6 +105,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     float* d_kernel{ nullptr };
     cudaMalloc(&d_kernel, sizeof(h_kernel));
     cudaMemcpy(d_kernel, h_kernel, sizeof(h_kernel), cudaMemcpyHostToDevice);
+    float* h_output = new float[image_bytes] {0};
 
     const float alpha = 1.0f, beta = 1.0f;
     cudaEvent_t start, stop;
@@ -119,7 +120,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         kernel_descriptor,
         d_kernel,
         convolution_descriptor,
-        CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+        CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
         d_workspace,
         workspace_bytes,
         &beta,
@@ -127,13 +128,14 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         d_output));
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
+    cudaMemcpy(h_output, d_output, image_bytes, cudaMemcpyDeviceToHost);
     float cudnnMillisec = 0;
     cudaEventElapsedTime(&cudnnMillisec, start, stop);
     printf("CUDNN run duration : %f s\n", cudnnMillisec / 1000);
+    //save data to file
+    fprintf(outputFile, "%f\n", cudnnMillisec / 1000);
 
-    float* h_output = new float[image_bytes] {0};
-    cudaMemcpy(h_output, d_output, image_bytes, cudaMemcpyDeviceToHost);
-
+    //save image
     save_image(outputImg, h_output, outputHeight, outputWidth);
 
     //destroy cudnn
