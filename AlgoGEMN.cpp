@@ -84,7 +84,9 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     assert(workspace_bytes > 0);
     void* d_workspace{ nullptr };
     cudaMalloc((void**)&d_workspace, workspace_bytes);
+
     long image_bytes = batch_size * channels * outputHeight * outputWidth * sizeof(float);
+
     float* d_input{ nullptr };
     cudaMalloc((void**)&d_input, image_bytes);
     float* pixelData = image.ptr<float>(0);

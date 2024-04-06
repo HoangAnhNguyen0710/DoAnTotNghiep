@@ -20,17 +20,24 @@ __global__ void Convolution(float* input, const float* kernel, float* output,
     int input_width, int input_height, int kernel_size, int stride,
     int output_width, int output_height);
 
-void Convolution_Calculation_CUDA(float* h_input, const float* h_kernel, float* h_output,
-    int input_width, int input_height, int kernel_size, int stride,
-    int output_width, int output_height, int channels) {
-
+void Convolution_Calculation_CUDA(char* inputImgName, char* outputImgName, const float* h_kernel,
+    int kernel_size, int stride) {
+    cv::Mat image = load_image(inputImgName);
+    float* h_input = image.ptr<float>(0);
     cudaEvent_t start1, stop1;
-    cudaEventCreate(&start1);
-    cudaEventCreate(&stop1);
-    cudaEventRecord(start1);
+
     float* d_input = NULL;
     float* d_kernel = NULL;
     float* d_output = NULL;
+    int input_height = image.rows;
+    int input_width = image.cols;
+    int channels = image.channels();
+
+    int output_width = input_width - kernel_size + 1;
+    int output_height = input_height - kernel_size + 1;
+    long image_bytes = channels * output_height * output_width * sizeof(float);
+    float* h_output = new float[image_bytes] { 0 };
+
     cudaMalloc((void**)&d_input, input_width * input_height * channels * sizeof(float));
     cudaMalloc((void**)&d_kernel, kernel_size * kernel_size * sizeof(float));
     cudaMalloc((void**)&d_output, output_width * output_height * channels * sizeof(float));
@@ -43,19 +50,21 @@ void Convolution_Calculation_CUDA(float* h_input, const float* h_kernel, float* 
     dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
     dim3 blocksPerGrid((input_width + BLOCK_SIZE - 1) / BLOCK_SIZE, (input_height + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
-     // Launch the kernel
+    cudaEventCreate(&start1);
+    cudaEventCreate(&stop1);
+    cudaEventRecord(start1);
+     // Launch the convolution
     Convolution << <blocksPerGrid, threadsPerBlock >> > (d_input, d_kernel, d_output, input_width, input_height, kernel_size, 1, output_width, output_height);
-
-    // Copy output data from GPU to CPU
-    cudaMemcpy(h_output, d_output, output_width * output_height * channels * sizeof(float), cudaMemcpyDeviceToHost);
     cudaEventRecord(stop1);
     cudaEventSynchronize(stop1);
+    // Copy output data from GPU to CPU
+    cudaMemcpy(h_output, d_output, output_width * output_height * channels * sizeof(float), cudaMemcpyDeviceToHost);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start1, stop1);
     printf("self run duration : %f s\n", milliseconds / 1000);
     printf("self h_output");
 
-    save_image("self_convolution.jpg", h_output, output_height, output_width);
+    save_image(outputImgName, h_output, output_height, output_width);
     // Cleanup
     cudaFree(d_input);
     cudaFree(d_kernel);
@@ -105,30 +114,31 @@ int main(int argc, const char* argv[]) {
         //  {0, -1, 0},
         // {-1, 5, -1},
         // {0, -1, 0}
-         {0, 1, 0},
-         {1, -0.5, 1},
-         {0, 1, 0}
+         {1, 1, 1},
+         {1, 1, 1},
+         {1, 1, 1}
 
     };
-
+   printf("GEMM impl:\n");
    // Algo GEMM Testing
-   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+   /*CudnnRuntimeAlgoGemn("input/Test_Image3.jpg", "output/Test_Image4.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image5.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
+  // CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image5.jpg", kernel_template);
    CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);*/
+   //CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+  // CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+  // CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+  //CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+  // CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
    // Algo Winograd Testing
-   CudnnRuntimeAlgoWinograd("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+   /*printf("Algo Winograd:\n");
+   CudnnRuntimeAlgoWinograd("input/512x512.jpg", "output/Test_Image4.jpg", kernel_template);
    CudnnRuntimeAlgoWinograd("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
    CudnnRuntimeAlgoWinograd("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
    CudnnRuntimeAlgoWinograd("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
@@ -142,29 +152,33 @@ int main(int argc, const char* argv[]) {
    CudnnRuntimeAlgoWinograd("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
    CudnnRuntimeAlgoWinograd("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
    CudnnRuntimeAlgoWinograd("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-   CudnnRuntimeAlgoWinograd("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+   CudnnRuntimeAlgoWinograd("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);*/
    // CudnnRuntimeAlgoGemn("input/Test_Image4.jpg");
     // clang-format 
-    float h_kernel[3][3];
-    for (int row = 0; row < 3; ++row) {
-        for (int column = 0; column < 3; ++column) {
+    float h_kernel[KERNEL_SIZE][KERNEL_SIZE];
+    for (int row = 0; row < KERNEL_SIZE; ++row) {
+        for (int column = 0; column < KERNEL_SIZE; ++column) {
             h_kernel[row][column] = kernel_template[row][column];
         }
     }
     // self convolution
     float* new_h_kernel = new float[10] {0};
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            new_h_kernel[i * 3 + j] = h_kernel[i][j];
+    for (int i = 0; i < KERNEL_SIZE; i++) {
+        for (int j = 0; j < KERNEL_SIZE; j++) {
+            new_h_kernel[i * KERNEL_SIZE + j] = h_kernel[i][j];
         }
     }
-    /*
-    float* new_h_output = new float[image_bytes] { 0 };
-    // clock_t start1 = clock();
-    Convolution_Calculation_CUDA(pixelData, new_h_kernel, new_h_output, width, height, 3, 1, width, height, channels);
-    float milliseconds = 0;
-    // printf("self run duration : %f s\n", milliseconds /1000);
-    printf("Happy new year 2024 !!!");
-    */
+    
+    printf("Direct impl:\n");
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
+    Convolution_Calculation_CUDA("input/Test_Image4.jpg", "output/Test_Image4.jpg", new_h_kernel, KERNEL_SIZE, 1);
 }
 
