@@ -114,31 +114,40 @@ int main(int argc, const char* argv[]) {
         // {0.111111, 0.111111, 0.111111},
         // {0.111111, 0.111111, 0.111111},
         // {0.111111, 0.111111, 0.111111}
-        //  {0, -1, 0},
+        // Laplacian
+        // {0, 1, 0},
+        // {1, -4, 1},
+        // {0, 1, 0}
+        // Sharpen
+        // {0, -1, 0},
         // {-1, 5, -1},
         // {0, -1, 0}
-         {1, 1, 1},
-         {1, 1, 1},
-         {1, 1, 1}
-
+        // Gauss
+        // {1, 2, 1},
+        // {2, 4, 2},
+        // {1, 2, 1}
+        // Sobel by x
+         {-1, 0, 1},
+         {-2, 0, 2},
+         {-1, 0, 1}
+        // Sobel by y
+        // {-1, -2, -1},
+        // {0, 0, 0},
+        // {1, 2, 1}
     };
    printf("GEMM impl:\n");
    // Algo GEMM Testing
    CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
-   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
-   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
-   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
-   CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
-  // CudnnRuntimeAlgoGemn("output/Test_Image5.jpg", "output/Test_Image5.jpg", kernel_template);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image5.jpg", kernel_template, Algo_Gemm_Data_File);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
-   CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
-   //CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-  // CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-  // CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-  //CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
-  // CudnnRuntimeAlgoGemn("output/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
+   CudnnRuntimeAlgoGemn("input/Test_Image4.jpg", "output/Test_Image4.jpg", kernel_template, Algo_Gemm_Data_File);
    // Algo Winograd Testing
    /*printf("Algo Winograd:\n");
    CudnnRuntimeAlgoWinograd("input/512x512.jpg", "output/Test_Image4.jpg", kernel_template);
