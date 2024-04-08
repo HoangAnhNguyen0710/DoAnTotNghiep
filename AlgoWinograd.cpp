@@ -84,8 +84,8 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         output_descriptor,
         CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
         &workspace_bytes));
-    std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
-        << std::endl;
+    //std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
+    //    << std::endl;
     assert(workspace_bytes > 0);
 
     void* d_workspace{ nullptr };

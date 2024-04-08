@@ -79,8 +79,8 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         output_descriptor,
         CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
         &workspace_bytes));
-    std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
-        << std::endl;
+    //std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
+    //   << std::endl;
     assert(workspace_bytes > 0);
     void* d_workspace{ nullptr };
     cudaMalloc((void**)&d_workspace, workspace_bytes);
