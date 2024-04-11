@@ -107,21 +107,21 @@ __global__ void Convolution(float* input, const float* kernel, float* output,
 
 
 int main(int argc, const char* argv[]) {
-    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_512x512_input_&3x3filter.txt", "a+");
-    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_512x512_input_&3x3filter.txt", "a+");
-    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_512x512_input_&3x3filter.txt", "a+");
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_1024x1024_input_&3x3filter2.txt", "w+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_1024x1024_input_&3x3filter2.txt", "w+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_1024x1024_input_&3x3filter2.txt", "w+");
     float kernel_template[KERNEL_SIZE][KERNEL_SIZE] = {
         // {0.111111, 0.111111, 0.111111},
         // {0.111111, 0.111111, 0.111111},
         // {0.111111, 0.111111, 0.111111}
         // Laplacian
-        // {0, 1, 0},
-        // {1, -4, 1},
-        // {0, 1, 0}
+         {0, 1, 0},
+         {1, -4, 1},
+         {0, 1, 0}
         // Sharpen
-         {0, -1, 0},
-         {-1, 5, -1},
-         {0, -1, 0}
+        // {0, -1, 0},
+        // {-1, 5, -1},
+        // {0, -1, 0}
         // Gauss
         // {1, 2, 1},
         // {2, 4, 2},
@@ -138,12 +138,12 @@ int main(int argc, const char* argv[]) {
    printf("GEMM impl:\n");
    // Algo GEMM Testing
    for (int i = 0; i < 101; i++) {
-       CudnnRuntimeAlgoGemn("input/512x512.jpg", "output/512x512_Gemm.jpg", kernel_template, Algo_Gemm_Data_File);
+       CudnnRuntimeAlgoGemn("input/1024x1024.jpg", "output/1024x1024_Gemm.jpg", kernel_template, Algo_Gemm_Data_File);
    }
    printf("Winograd impl:\n");
    // Algo Winograd Testing
    for (int i = 0; i < 100; i++) {
-       CudnnRuntimeAlgoWinograd("input/512x512.jpg", "output/512x512_Winograd.jpg", kernel_template, Algo_Winograd_Data_File);
+       CudnnRuntimeAlgoWinograd("input/1024x1024.jpg", "output/1024x1024_Winograd.jpg", kernel_template, Algo_Winograd_Data_File);
    }
 
     // clang-format 
@@ -162,8 +162,8 @@ int main(int argc, const char* argv[]) {
     }
     // direct testing
     printf("Direct impl:\n");
-    for (int i = 0; i < 101; i++) {
-        Convolution_Calculation_CUDA("input/512x512.jpg", "output/512x512_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    for (int i = 0; i < 100; i++) {
+        Convolution_Calculation_CUDA("input/1024x1024.jpg", "output/1024x1024_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
     }
 
     fclose(Algo_Direct_Data_File);
