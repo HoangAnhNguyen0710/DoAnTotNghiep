@@ -19,60 +19,59 @@
 void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE], FILE* outputFile) {
     cv::Mat image = load_image(imgName);
     const int kernel_size = KERNEL_SIZE;
+
     cudnnHandle_t cudnn;
     cudnnCreate(&cudnn);
-    
+
     cudnnTensorDescriptor_t input_descriptor;
-    checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));
-    checkCUDNN(cudnnSetTensor4dDescriptor(input_descriptor,
-        /*format=*/CUDNN_TENSOR_NHWC,
-        /*data_type=*/CUDNN_DATA_FLOAT,
-        /*batch_size=*/1,
-        /*channels=*/1,
-        /*image_height=*/image.rows,
-        /*image_width=*/image.cols));
+    cudnnCreateTensorDescriptor(&input_descriptor);
+    cudnnSetTensor4dDescriptor(input_descriptor,
+        CUDNN_TENSOR_NHWC,
+        CUDNN_DATA_FLOAT,
+        1,
+        1,
+        image.rows,
+        image.cols);
+
     cudnnFilterDescriptor_t kernel_descriptor;
-    checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));
-    checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,
-        /*data_type=*/CUDNN_DATA_FLOAT,
-        /*format=*/CUDNN_TENSOR_NCHW,
-        /*out_channels=*/1,
-        /*in_channels=*/1,
-        /*kernel_height=*/kernel_size,
-        /*kernel_width=*/kernel_size));
+    cudnnCreateFilterDescriptor(&kernel_descriptor);
+    cudnnSetFilter4dDescriptor(kernel_descriptor,
+        CUDNN_DATA_FLOAT,
+        CUDNN_TENSOR_NCHW,
+        1,
+        1,
+        kernel_size,
+        kernel_size);
+
     cudnnConvolutionDescriptor_t convolution_descriptor;
-    checkCUDNN(cudnnCreateConvolutionDescriptor(&convolution_descriptor));
-    checkCUDNN(cudnnSetConvolution2dDescriptor(convolution_descriptor,
-        /*pad_height=*/1,
-        /*pad_width=*/1,
-        /*vertical_stride=*/1,
-        /*horizontal_stride=*/1,
-        /*dilation_height=*/1,
-        /*dilation_width=*/1,
-        /*mode=*/CUDNN_CROSS_CORRELATION,
-        /*computeType=*/CUDNN_DATA_FLOAT));
-    int batch_size{ 0 }, channels{ 0 }, outputHeight{ 0 }, outputWidth{ 0 };
-    checkCUDNN(cudnnGetConvolution2dForwardOutputDim(convolution_descriptor,
+    cudnnCreateConvolutionDescriptor(&convolution_descriptor);
+    cudnnSetConvolution2dDescriptor(convolution_descriptor,
+        1, 1, 1, 1, 1, 1,
+        CUDNN_CROSS_CORRELATION,
+        CUDNN_DATA_FLOAT);
+
+    int batch_size, channels, output_height, output_width;
+    cudnnGetConvolution2dForwardOutputDim(convolution_descriptor,
         input_descriptor,
         kernel_descriptor,
         &batch_size,
         &channels,
-        &outputHeight,
-        &outputWidth));
-
-   // std::cerr << "Output Image: " << outputHeight << " x " << outputWidth << " x " << channels
-   //     << std::endl;
+        &output_height,
+        &output_width);
+    std::cerr << "Output Image: " << output_height << " x " << output_width << " x " << channels
+        << std::endl;
     cudnnTensorDescriptor_t output_descriptor;
-    checkCUDNN(cudnnCreateTensorDescriptor(&output_descriptor));
-    checkCUDNN(cudnnSetTensor4dDescriptor(output_descriptor,
-        /*format=*/CUDNN_TENSOR_NHWC,
-        /*data_type=*/CUDNN_DATA_FLOAT,
-        /*batch_size=*/batch_size,
-        /*channels=*/channels,
-        /*image_height=*/outputHeight,
-        /*image_width=*/outputWidth));
+    cudnnCreateTensorDescriptor(&output_descriptor);
+    cudnnSetTensor4dDescriptor(output_descriptor,
+        CUDNN_TENSOR_NHWC,
+        CUDNN_DATA_FLOAT,
+        batch_size,
+        channels,
+        output_height,
+        output_width);
+
     size_t workspace_bytes{ 0 };
-    checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnn,
+   /* checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnn,
         input_descriptor,
         kernel_descriptor,
         convolution_descriptor,
@@ -80,18 +79,17 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
         &workspace_bytes));
     //std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
-    //   << std::endl;
+    //   << std::endl;*/
     assert(workspace_bytes > 0);
     void* d_workspace{ nullptr };
     cudaMalloc((void**)&d_workspace, workspace_bytes);
-
-    long image_bytes = batch_size * channels * outputHeight * outputWidth * sizeof(float);
-
+    long image_bytes = batch_size * channels * output_height * output_width * sizeof(float);
+    long input_img_bytes = batch_size * image.rows * image.cols * channels * sizeof(float);
     float* d_input{ nullptr };
-    cudaMalloc((void**)&d_input, image_bytes);
+    cudaMalloc((void**)&d_input, input_img_bytes);
     float* pixelData = image.ptr<float>(0);
 
-    cudaMemcpy(d_input, pixelData, image_bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_input, pixelData, input_img_bytes, cudaMemcpyHostToDevice);
     float* d_output{ nullptr };
     cudaMalloc((void**)&d_output, image_bytes);
     cudaMemset(d_output, 0, image_bytes);
@@ -103,8 +101,9 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         }
     }
     float* d_kernel{ nullptr };
-    cudaMalloc(&d_kernel, sizeof(h_kernel));
-    cudaMemcpy(d_kernel, h_kernel, sizeof(h_kernel), cudaMemcpyHostToDevice);
+  //  printf("%d %d\n", kernel_size * kernel_size * channels * sizeof(float), sizeof(h_kernel));
+    cudaMalloc(&d_kernel, kernel_size * kernel_size * channels * sizeof(float));
+    cudaMemcpy(d_kernel, h_kernel, kernel_size * kernel_size * channels * sizeof(float), cudaMemcpyHostToDevice);
     float* h_output = new float[image_bytes] {0};
 
     const float alpha = 1.0f, beta = 1.0f;
@@ -120,7 +119,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         kernel_descriptor,
         d_kernel,
         convolution_descriptor,
-        CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
+        CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
         d_workspace,
         workspace_bytes,
         &beta,
@@ -136,7 +135,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     fprintf(outputFile, "%f\n", cudnnMillisec / 1000);
 
     //save image
-    save_image(outputImg, h_output, outputHeight, outputWidth);
+    save_image(outputImg, h_output, output_height, output_width);
 
     //destroy cudnn
     delete[] h_output;

@@ -22,7 +22,6 @@ void save_image(const char* output_filename,
     cv::threshold(output_image, output_image, /*threshold=*/0, /*maxval=*/0, cv::THRESH_TOZERO);
     cv::normalize(output_image, output_image, 0.0, 255.0, cv::NORM_MINMAX);
     output_image.convertTo(output_image, CV_8UC1); // Chuyển đổi sang kiểu dữ liệu 8-bit unsigned integer
-
     cv::imwrite(output_filename, output_image);
     //std::cerr << "Wrote output to " << output_filename << std::endl;
 }
