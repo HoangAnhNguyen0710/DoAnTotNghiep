@@ -15,7 +15,7 @@
 #include "CudaCustomFunc.h"
 #include "ImageInOut.h"
 
-__global__ void Convolution(float* input, const float* kernel, float* output,
+__global__ void Convolution(const float* __restrict__  input, const float* __restrict__  kernel, float* output,
     int input_width, int input_height, int kernel_size, int stride,
     int output_width, int output_height);
 
@@ -23,7 +23,7 @@ __global__ void Im2winConvolution(float* input, const float* kernel, float* outp
     int input_width, int input_height, int kernel_size, int stride,
     int output_width, int output_height);
 
-//__constant__ float d_kernel_const[KERNEL_SIZE * KERNEL_SIZE];
+__constant__ float d_kernel_const[KERNEL_SIZE * KERNEL_SIZE * KERNEL_SIZE];
 
 __global__ void MatrixMultiply(const float* __restrict__ d_kernel, const float* __restrict__ input, float* output, const int input_width, int kernel_size) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -116,9 +116,9 @@ void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float*
     cudaMemcpy(h_output, d_output, output_width * output_height * channels * sizeof(float), cudaMemcpyDeviceToHost);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start1, stop1);
-    printf("self run duration : %f s\n", milliseconds / 1000);
+    printf("self gemm run duration : %f ms\n", milliseconds);
     //save data to file
-    fprintf(outputFile, "%f\n", milliseconds / 1000);
+    fprintf(outputFile, "%f\n", milliseconds);
     //save image
     save_image(outputImgName, h_output, output_height, output_width);
     // Cleanup
@@ -160,13 +160,13 @@ void Convolution_Calculation_CUDA(char* inputImgName, char* outputImgName, const
     // Define grid and block dimensions for GPU computation
     dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
     dim3 blocksPerGrid((input_width + BLOCK_SIZE - 1) / BLOCK_SIZE, (input_height + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    // int sharedMemSize = (threadsPerBlock.x + KERNEL_SIZE) * (threadsPerBlock.y + KERNEL_SIZE) * sizeof(float);
+    int sharedMemSize = (threadsPerBlock.x + KERNEL_SIZE) * (threadsPerBlock.y + KERNEL_SIZE) * sizeof(float);
     
     cudaEventCreate(&start1);
     cudaEventCreate(&stop1);
     cudaEventRecord(start1);
      // Launch the convolution
-    Convolution << <blocksPerGrid, threadsPerBlock >> > (d_input, d_kernel, d_output, input_width, input_height, kernel_size, 1, output_width, output_height);
+    Convolution << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (d_input, d_kernel, d_output, input_width, input_height, kernel_size, 1, output_width, output_height);
     cudaDeviceSynchronize();
     // Im2winConvolution << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (d_input, d_kernel, d_output, input_width, input_height, kernel_size, 1, output_width, output_height);
     cudaEventRecord(stop1);
@@ -175,9 +175,9 @@ void Convolution_Calculation_CUDA(char* inputImgName, char* outputImgName, const
     cudaMemcpy(h_output, d_output, output_width * output_height * channels * sizeof(float), cudaMemcpyDeviceToHost);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start1, stop1);
-    printf("self run duration : %f s\n", milliseconds / 1000);
+    printf("self run duration : %f ms\n", milliseconds);
     //save data to file
-    fprintf(outputFile, "%f\n", milliseconds / 1000);
+    fprintf(outputFile, "%f\n", milliseconds);
     //save image
     save_image(outputImgName, h_output, output_height, output_width);
     // Cleanup
@@ -194,11 +194,10 @@ __global__ void Im2winConvolution(float* input, const float* kernel, float* outp
     // PENDING
 }
 
-__global__ void Convolution(float* input, const float* kernel, float* output,
+__global__ void Convolution(const float* __restrict__  input, const float* __restrict__  kernel, float* output,
         int input_width, int input_height, int kernel_size, int stride,
         int output_width, int output_height)
     {
-    extern __shared__ float tile[];
 
     // int col_in_block = threadIdx.x;
     // int row_in_block = threadIdx.y;
@@ -231,26 +230,27 @@ __global__ void Convolution(float* input, const float* kernel, float* output,
 
 
 int main(int argc, const char* argv[]) {
-    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_1024x1024_input_&4x4filter.txt", "w+");
-    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_128x128_input_&3x3filter.txt", "w+");
-    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_1024x1024_input_&4x4filter.txt", "w+");
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_512x512_input_&3x3filter3.txt", "w+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_512x512_input_&3x3filter3.txt", "w+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_1024x1024_input_&3x3filter2.txt", "w+");
+    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_1024x1024_input_&3x3filter2.txt", "w+");
     float kernel_template[KERNEL_SIZE][KERNEL_SIZE] = {
         //Emboss
-      {0, 1, 1, 0},
-      {1, -2, -2, 1},
-      {1, -2, -2, 1},
-      {0, 1, 1, 0}
+      //{0, 1, 1, 0},
+      //{1, -2, -2, 1},
+      //{1, -2, -2, 1},
+      //{0, 1, 1, 0}
         // {0.111111, 0.111111, 0.111111},
         // {0.111111, 0.111111, 0.111111},
         // {0.111111, 0.111111, 0.111111}
         // Laplacian
-      //  {0, 1, 0},
-      //  {1, -4, 1},
-      //  {0, 1, 0}
+        // {0, 1, 0},
+        // {1, -4, 1},
+        // {0, 1, 0}
         // Sharpen
-        // {0, -1, 0},
-        // {-1, 5, -1},
-        // {0, -1, 0}
+         {0, -1, 0},
+         {-1, 5, -1},
+         {0, -1, 0}
         // Gauss
         // {1, 2, 1},
         // {2, 4, 2},
@@ -264,14 +264,8 @@ int main(int argc, const char* argv[]) {
         // {0, 0, 0},
         // {1, 2, 1}
     };
-   //printf("GEMM impl:\n");
-   // Algo GEMM Testing
 
-  // printf("Winograd impl:\n");
-   // Algo Winograd Testing
-  // for (int i = 0; i < 50; i++) {
-   // CudnnRuntimeAlgoWinograd("input/128x128.jpg", "output/128x128_Winograd.jpg", kernel_template, Algo_Winograd_Data_File);
-  // }
+
 
     // clang-format 
     float h_kernel[KERNEL_SIZE][KERNEL_SIZE];
@@ -288,17 +282,34 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    // direct testing
-   // printf("Direct impl:\n");
-    for (int i = 0; i < 50; i++) {
-        CudnnRuntimeAlgoGemn("input/1024x1024.jpg", "output/1024x1024_Gemm.jpg", kernel_template, Algo_Gemm_Data_File);
-    }
+
+    printf("GEMM impl:\n");
+    // Algo GEMM Testing
     for (int i = 0; i < 51; i++) {
-   //     printf("%d\n", i);
-        Convolution_Calculation_CUDA("input/1024x1024.jpg", "output/1024x1024_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+        CudnnRuntimeAlgoGemn("input/512x512.jpg", "output/512x512_Gemm.jpg", kernel_template, Algo_Gemm_Data_File);
     }
+
+    printf("Winograd impl:\n");
+    // Algo Winograd Testing
+    for (int i = 0; i < 50; i++) {
+      CudnnRuntimeAlgoWinograd("input/512x512.jpg", "output/512x512_Winograd.jpg", kernel_template, Algo_Winograd_Data_File);
+    }
+
+    // direct testing
+    // printf("Direct impl:\n");
+   // for (int i = 0; i < 50; i++) {
+   //     printf("%d\n", i);
+   //     Convolution_Calculation_CUDA("input/128x128.jpg", "output/128x128_Direct.jpg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+   // }
+
+   // for (int i = 0; i < 50; i++) {
+        //     printf("%d\n", i);
+   //     Self_Gemm_Convolution("input/1024x1024.jpg", "output/1024x1024_Self_Gemm.jpg", new_h_kernel, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+   // }
+
     fclose(Algo_Direct_Data_File);
     fclose(Algo_Gemm_Data_File);
     fclose(Algo_Winograd_Data_File);
+    fclose(Self_Gemm_Data_File);
 }
 

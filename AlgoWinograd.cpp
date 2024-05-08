@@ -17,7 +17,7 @@
 #include "CudaCustomFunc.h"
 
 void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE], FILE* outputFile) {
- cv::Mat image = load_image(imgName);
+    cv::Mat image = load_image(imgName);
     const int kernel_size = KERNEL_SIZE;
 
     cudnnHandle_t cudnn;
@@ -29,7 +29,7 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         CUDNN_TENSOR_NHWC,
         CUDNN_DATA_FLOAT,
         1,
-        1,
+        image.channels(),
         image.rows,
         image.cols);
 
@@ -38,8 +38,8 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     cudnnSetFilter4dDescriptor(kernel_descriptor,
         CUDNN_DATA_FLOAT,
         CUDNN_TENSOR_NCHW,
-        1,
-        1,
+        image.channels(),
+        image.channels(),
         kernel_size,
         kernel_size);
 
@@ -58,8 +58,8 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         &channels,
         &output_height,
         &output_width);
-     std::cerr << "Output Image: " << output_height << " x " << output_width << " x " << channels
-     << std::endl;
+    // std::cerr << "Output Image: " << output_height << " x " << output_width << " x " << channels
+    // << std::endl;
     cudnnTensorDescriptor_t output_descriptor;
     cudnnCreateTensorDescriptor(&output_descriptor);
     cudnnSetTensor4dDescriptor(output_descriptor,
@@ -79,32 +79,33 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
         &workspace_bytes);
 
-    std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
-        << std::endl;
+    // std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
+    //    << std::endl;
     assert(workspace_bytes > 0);
-  //  printf("6\n");
     void* d_workspace{ nullptr };
-    float* d_input{ nullptr };
-    float* pixelData = image.ptr<float>(0);
-    float* d_output{ nullptr };
-
-    long image_bytes = batch_size * channels * output_height * output_width * sizeof(float);
-    long input_image_bytes = batch_size * channels * image.rows * image.cols * sizeof(float);
     cudaMalloc((void**)&d_workspace, workspace_bytes);
-    cudaMalloc((void**)&d_input, input_image_bytes);
-    cudaMemcpy(d_input, pixelData, input_image_bytes, cudaMemcpyHostToDevice);
+    long image_bytes = batch_size * channels * output_height * output_width * sizeof(float);
+    long input_img_bytes = batch_size * image.rows * image.cols * channels * sizeof(float);
+    float* d_input{ nullptr };
+    cudaMalloc((void**)&d_input, input_img_bytes);
+    float* pixelData = image.ptr<float>(0);
+    cudaMemcpy(d_input, pixelData, input_img_bytes, cudaMemcpyHostToDevice);
+    float* d_output{ nullptr };
     cudaMalloc((void**)&d_output, image_bytes);
     cudaMemset(d_output, 0, image_bytes);
-
-    float h_kernel[kernel_size][kernel_size];
-    for (int row = 0; row < kernel_size; ++row) {
-        for (int column = 0; column < kernel_size; ++column) {
-            h_kernel[row][column] = kernel_template[row][column];
+    // const int channels_num = image.channels();
+    float h_kernel[3][3][kernel_size][kernel_size];
+    for (int kernel = 0; kernel < 3; kernel++) {
+        for (int j = 0; j < channels; j++) {
+            for (int row = 0; row < kernel_size; row++) {
+                for (int column = 0; column < kernel_size; column++) {
+                    h_kernel[kernel][j][row][column] = kernel_template[row][column];
+                }
+            }
         }
     }
     float* d_kernel{ nullptr };
     cudaMalloc(&d_kernel, sizeof(h_kernel));
-    // printf("%d %d\n", kernel_size * kernel_size * channels * sizeof(float), sizeof(h_kernel));
     cudaMemcpy(d_kernel, h_kernel, sizeof(h_kernel), cudaMemcpyHostToDevice);
     float* h_output = new float[image_bytes] {0};
 
@@ -132,9 +133,9 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     cudaMemcpy(h_output, d_output, image_bytes, cudaMemcpyDeviceToHost);
     float cudnnMillisec = 0;
     cudaEventElapsedTime(&cudnnMillisec, start, stop);
-    printf("CUDNN run duration : %f s\n", cudnnMillisec / 1000);
+    printf("CUDNN run duration : %f ms\n", cudnnMillisec);
     //save data to file
-    fprintf(outputFile, "%f\n", cudnnMillisec / 1000);
+    fprintf(outputFile, "%f\n", cudnnMillisec);
 
     //save image
     save_image(outputImg, h_output, output_height, output_width);

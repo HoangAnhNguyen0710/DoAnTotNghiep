@@ -13,7 +13,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
 
-#define KERNEL_SIZE 4
+#define KERNEL_SIZE 3
 #define BLOCK_SIZE 32
 #define checkCUDNN(expression)                               \
   {                                                          \
