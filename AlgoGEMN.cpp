@@ -1,4 +1,4 @@
-
+﻿
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <stdio.h>
@@ -46,7 +46,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     cudnnConvolutionDescriptor_t convolution_descriptor;
     cudnnCreateConvolutionDescriptor(&convolution_descriptor);
     cudnnSetConvolution2dDescriptor(convolution_descriptor,
-        1, 1, 1, 1, 1, 1,
+        0, 0, 1, 1, 1, 1,
         CUDNN_CROSS_CORRELATION,
         CUDNN_DATA_FLOAT);
 
@@ -94,21 +94,25 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     // const int channels_num = image.channels();
     float h_kernel[3][3][kernel_size][kernel_size];
     for (int kernel = 0; kernel < 3; kernel++) {
-        for (int j = 0; j < channels; j++) {
+        for (int ch = 0; ch < 3; ch++) {
             for (int row = 0; row < kernel_size; row++) {
                 for (int column = 0; column < kernel_size; column++) {
-                    h_kernel[kernel][j][row][column] = kernel_template[row][column];
+                    if (kernel == ch)
+                        h_kernel[kernel][ch][row][column] = kernel_template[row][column];
+                    else h_kernel[kernel][ch][row][column] = 0.0f;
+                   //  h_kernel[0][ch][row][column] = kernel_template[row][column];
+                   //  h_kernel[2][ch][row][column] = kernel_template[row][column];
                 }
             }
         }
     }
     float* d_kernel{ nullptr };
-  //  printf("%d %d\n", kernel_size * kernel_size * channels * sizeof(float), sizeof(h_kernel));
+    //printf("%d", kernel_size * kernel_size * channels * 3 * sizeof(float));
     cudaMalloc(&d_kernel, sizeof(h_kernel));
     cudaMemcpy(d_kernel, h_kernel, sizeof(h_kernel), cudaMemcpyHostToDevice);
     float* h_output = new float[image_bytes] {0};
   
-    const float alpha = 1.0f, beta = 1.0f;
+    const float alpha = 1.0f, beta = 0.0f;
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -135,6 +139,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     printf("CUDNN run duration : %f ms\n", cudnnMillisec);
     //save data to file
     fprintf(outputFile, "%f\n", cudnnMillisec);
+
     //save image
     save_image(outputImg, h_output, output_height, output_width);
 

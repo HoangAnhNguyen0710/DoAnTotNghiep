@@ -46,7 +46,7 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     cudnnConvolutionDescriptor_t convolution_descriptor;
     cudnnCreateConvolutionDescriptor(&convolution_descriptor);
     cudnnSetConvolution2dDescriptor(convolution_descriptor,
-        1, 1, 1, 1, 1, 1,
+        0, 0, 1, 1, 1, 1,
         CUDNN_CROSS_CORRELATION,
         CUDNN_DATA_FLOAT);
 
@@ -96,10 +96,12 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     // const int channels_num = image.channels();
     float h_kernel[3][3][kernel_size][kernel_size];
     for (int kernel = 0; kernel < 3; kernel++) {
-        for (int j = 0; j < channels; j++) {
+        for (int ch = 0; ch < channels; ch++) {
             for (int row = 0; row < kernel_size; row++) {
                 for (int column = 0; column < kernel_size; column++) {
-                    h_kernel[kernel][j][row][column] = kernel_template[row][column];
+                    if (kernel == ch)
+                        h_kernel[kernel][ch][row][column] = kernel_template[row][column];
+                    else h_kernel[kernel][ch][row][column] = 0.0f;
                 }
             }
         }
