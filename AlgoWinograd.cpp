@@ -20,6 +20,9 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     cv::Mat image = load_image(imgName);
     const int kernel_size = KERNEL_SIZE;
 
+    size_t beforeFreeBytes, beforeTotalBytes;
+    cudaMemGetInfo(&beforeFreeBytes, &beforeTotalBytes);
+
     cudnnHandle_t cudnn;
     cudnnCreate(&cudnn);
 
@@ -79,8 +82,8 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
         &workspace_bytes);
 
-    // std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
-    //    << std::endl;
+     std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
+       << std::endl;
     assert(workspace_bytes > 0);
     void* d_workspace{ nullptr };
     cudaMalloc((void**)&d_workspace, workspace_bytes);
@@ -132,6 +135,14 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         d_output));
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
+
+    size_t afterFreeBytes, afterTotalBytes;
+    cudaMemGetInfo(&afterFreeBytes, &afterTotalBytes);
+    size_t usedBytes = beforeFreeBytes - afterFreeBytes;
+
+    std::cout << " Free Memory (MB): " << (afterFreeBytes / 1024.0 / 1024.0) << std::endl;
+    std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
+
     cudaMemcpy(h_output, d_output, image_bytes, cudaMemcpyDeviceToHost);
     float cudnnMillisec = 0;
     cudaEventElapsedTime(&cudnnMillisec, start, stop);

@@ -20,9 +20,12 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     cv::Mat image = load_image(imgName);
     const int kernel_size = KERNEL_SIZE;
 
+    size_t beforeFreeBytes, beforeTotalBytes;
+    cudaMemGetInfo(&beforeFreeBytes, &beforeTotalBytes);
+
     cudnnHandle_t cudnn;
     cudnnCreate(&cudnn);
-
+    
     cudnnTensorDescriptor_t input_descriptor;
     cudnnCreateTensorDescriptor(&input_descriptor);
     cudnnSetTensor4dDescriptor(input_descriptor,
@@ -60,6 +63,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         &output_width);
     //std::cerr << "Output Image: " << output_height << " x " << output_width << " x " << image.channels()
     //   << std::endl;
+    
     cudnnTensorDescriptor_t output_descriptor;
     cudnnCreateTensorDescriptor(&output_descriptor);
     cudnnSetTensor4dDescriptor(output_descriptor,
@@ -70,15 +74,15 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         output_height,
         output_width);
     size_t workspace_bytes{ 0 };
-   /* checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnn,
+    /* checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnn,
         input_descriptor,
         kernel_descriptor,
         convolution_descriptor,
         output_descriptor,
         CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
-        &workspace_bytes));
+        &workspace_bytes));*/
     //std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
-    //   << std::endl;*/
+    //   << std::endl;
     assert(workspace_bytes > 0);
     void* d_workspace{ nullptr };
     cudaMalloc((void**)&d_workspace, workspace_bytes);
@@ -106,6 +110,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
             }
         }
     }
+    
     float* d_kernel{ nullptr };
     //printf("%d", kernel_size * kernel_size * channels * 3 * sizeof(float));
     cudaMalloc(&d_kernel, sizeof(h_kernel));
@@ -133,13 +138,21 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
         d_output));
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
+    
+    size_t afterFreeBytes, afterTotalBytes;
+    cudaMemGetInfo(&afterFreeBytes, &afterTotalBytes);
+    size_t usedBytes = beforeFreeBytes - afterFreeBytes;
+
+    std::cout << " Free Memory (MB): " << (afterFreeBytes / 1024.0 / 1024.0) << std::endl;
+    std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
+
     cudaMemcpy(h_output, d_output, image_bytes, cudaMemcpyDeviceToHost);
     float cudnnMillisec = 0;
     cudaEventElapsedTime(&cudnnMillisec, start, stop);
     printf("CUDNN run duration : %f ms\n", cudnnMillisec);
     //save data to file
     fprintf(outputFile, "%f\n", cudnnMillisec);
-
+    
     //save image
     save_image(outputImg, h_output, output_height, output_width);
 
@@ -148,8 +161,9 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     cudaFree(d_kernel);
     cudaFree(d_input);
     cudaFree(d_output);
+    
     cudaFree(d_workspace);
-
+    
     cudnnDestroyTensorDescriptor(input_descriptor);
     cudnnDestroyTensorDescriptor(output_descriptor);
     cudnnDestroyFilterDescriptor(kernel_descriptor);
