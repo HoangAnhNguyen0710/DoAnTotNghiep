@@ -12,6 +12,8 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include "dirent.h"
+#include <stdlib.h>
 #include "CudaCustomFunc.h"
 #include "ImageInOut.h"
 
@@ -141,26 +143,26 @@ void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float 
     cudaEventRecord(stop1);
     cudaEventSynchronize(stop1);
 
-    //calculate used memory
-
+    /*
     size_t afterFreeBytes, afterTotalBytes;
     cudaMemGetInfo(&afterFreeBytes, &afterTotalBytes);
     size_t usedBytes = beforeFreeBytes - afterFreeBytes;
 
     std::cout << " Free Memory (MB): " << (afterFreeBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
+    */
 
-    /*
+    //calculate used memory
+    
     size_t d_col_mem = output_height * output_width * kernel_size * kernel_size * channels * sizeof(float);
     size_t d_input_mem = input_width * input_height * channels * sizeof(float);
     size_t d_output_mem = output_width * output_height * channels * sizeof(float);
     size_t global_mem = d_col_mem + d_input_mem + d_output_mem;
-    size_t const_mem = KERNEL_SIZE * KERNEL_SIZE * sizeof(float);
+    size_t const_mem = KERNEL_SIZE * KERNEL_SIZE * 3 * 3 * sizeof(float);
 
     size_t total_mem = global_mem + const_mem;
 
-
-    printf("total mem usage: %zu MB\n", total_mem / (1024 * 1024));*/
+    printf("total mem usage: %zu MB\n", total_mem / 1024 / 1024);
 
     cudaError_t cudaError = cudaGetLastError();
     if (cudaError != cudaSuccess) {
@@ -225,6 +227,9 @@ const float Gt[3][4] = {
     {0, 0.5, 0.5, 1}
 };
 
+
+// Khai báo các ma trận cần sao chép vào constant
+
 // Khai báo ma trận BT là constant
 __constant__ float BT_constant[4][4];
 // Khai báo ma trận B là constant
@@ -234,7 +239,7 @@ __constant__ float A_constant[4][2];
 // Khai báo ma trận AT là constant
 __constant__ float AT_constant[2][4];
 // Khai báo ma trận G là constant
-__constant__ float G_constant[4][4];
+__constant__ float G_constant[4][3];
 // Khai báo ma trận Gt là constant
 __constant__ float Gt_constant[3][4];
 // Khai báo ma trận biến đổi U của kernel (U = G * F * GT)
@@ -243,11 +248,12 @@ __constant__ float U_constant[3][3][4][4];
 void Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
     const int kernel_size, int stride, FILE* outputFile) {
     cv::Mat image = load_image(inputImgName);
-
+    /*
     size_t beforeFreeBytes, beforeTotalBytes;
     cudaMemGetInfo(&beforeFreeBytes, &beforeTotalBytes);
-
+    */
     float* h_input = image.ptr<float>(0);
+    
     cudaEvent_t start1, stop1;
     float* d_input = NULL;
         
@@ -303,30 +309,30 @@ void Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const
     // Im2winConvolution << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (d_input, d_kernel, d_output, input_width, input_height, kernel_size, 1, output_width, output_height);
     cudaEventRecord(stop1);
     cudaEventSynchronize(stop1);
-
+    /*
     size_t afterFreeBytes, afterTotalBytes;
     cudaMemGetInfo(&afterFreeBytes, &afterTotalBytes);
     size_t usedBytes = beforeFreeBytes - afterFreeBytes;
 
     std::cout << " Free Memory (MB): " << (afterFreeBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
+    */
 
-    /*
     size_t d_input_mem = input_width * input_height * channels * sizeof(float);
     size_t d_output_mem = output_width * output_height * channels * sizeof(float);
     size_t global_mem = d_input_mem + d_output_mem;
-    size_t const_mem = (KERNEL_SIZE * KERNEL_SIZE) * sizeof(float);
+    size_t const_mem = (KERNEL_SIZE * KERNEL_SIZE * 3 * 3) * sizeof(float);
 
     size_t total_mem = global_mem + const_mem;
 
-    printf("total mem usage: %zu MB\n", total_mem / (1024 * 1024));
-    */
+    printf("total mem usage: %zu MB\n", total_mem / 1024 / 1024 );
+    
 
     // Copy output data from GPU to CPU
     cudaMemcpy(h_output, d_output, output_width * output_height * channels * sizeof(float), cudaMemcpyDeviceToHost);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start1, stop1);
-    printf("self run duration : %f ms\n", milliseconds);
+    printf("self direct run duration : %f ms\n", milliseconds);
     //save data to file
     fprintf(outputFile, "%f\n", milliseconds);
     //save image
@@ -341,18 +347,21 @@ void Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const
 
 
 
-void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, const float* h_kernel,
+void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
     int kernel_size, int stride, FILE* outputFile) {
     cv::Mat image = load_image(inputImgName);
-
+    /*
     size_t freeBytes, totalBytes;
     cudaMemGetInfo(&freeBytes, &totalBytes);
+    */
 
     float F[3][3]; // F
     float GF[4][3]; // G * F 
     float U[3][3][4][4]; // G * F * GT
-  
+
     float* h_input = image.ptr<float>(0);
+    float* h_input_pinned;
+
     cudaEvent_t start1, stop1;
     float* d_input = NULL;
     
@@ -371,23 +380,25 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
     cudaMalloc((void**)&d_output, output_width * output_height * channels * sizeof(float));
     // Copy input and kernel data from CPU to GPU
     
+    // cudaMallocHost((void**)&h_input_pinned, image.cols * image.rows * image.channels() * sizeof(float));
+    // memcpy(h_input_pinned, h_input, image.cols * image.rows * image.channels() * sizeof(float));
+
     cudaMemcpy(d_input, h_input, input_width * input_height * channels * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_output, h_output, output_width * output_height * channels * sizeof(float), cudaMemcpyHostToDevice);
 
     // Define grid and block dimensions for GPU computation
     dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 blocksPerGrid((output_width + BLOCK_SIZE - 1) / BLOCK_SIZE, (output_height + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    dim3 blocksPerGrid((output_width + BLOCK_SIZE - 1) /( 2 * BLOCK_SIZE ) + 1, (output_height + BLOCK_SIZE - 1) / ( 2 * BLOCK_SIZE) + 1);
     cudaEventCreate(&start1);
     cudaEventCreate(&stop1);
     cudaEventRecord(start1);
-    
+
     //transform h_kernel
     for (int kernel = 0; kernel < channels; kernel++) {
         for (int ch = 0; ch < channels; ch++) {
-          
                 for (int i = 0; i < 3; i++) {
                     for (int j = 0; j < 3; j++) {
-                        F[i][j] = h_kernel[i * kernel_size + j];
+                        F[i][j] = kernel_template[i][j];
                         // if(row == 1 && col == 1) printf("%d %d %f\n", i, j, F[i][j]);
                     }
                 }
@@ -414,6 +425,7 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
             
         }
     }
+
     cudaMemcpyToSymbol(BT_constant, BT, sizeof(float) * 4 * 4);
     cudaMemcpyToSymbol(B_constant, B, sizeof(float) * 4 * 4);
     cudaMemcpyToSymbol(A_constant, A, sizeof(float) * 4 * 2);
@@ -435,7 +447,8 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
         printf("Error: %s\n", cudaGetErrorString(cudaError));
         // Thực hiện các xử lý khác hoặc thoát khỏi chương trình nếu cần
     }
-   
+    
+    /*
     size_t currentFreeBytes, currentTotalBytes;
     cudaMemGetInfo(&currentFreeBytes, &currentTotalBytes);
     size_t usedBytes = freeBytes - currentFreeBytes;
@@ -443,24 +456,25 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
     std::cout << " Total Memory (MB): " << (totalBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Current Free Memory (MB): " << (currentFreeBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
+    */
 
-    /*
+    
     size_t d_input_mem = input_width * input_height * channels * sizeof(float);
     size_t d_output_mem = output_width * output_height * channels * sizeof(float);
     size_t global_mem = d_input_mem + d_output_mem;
-    size_t const_mem = (4 * 4 + 4 * 4 + 4 * 2 + 2 * 4 + 4 * 3 + 3 * 4 + 4 * 4) * sizeof(float);
+    size_t const_mem = (4 * 4 + 4 * 4 + 4 * 2 + 2 * 4 + 4 * 3 + 3 * 4 + 4 * 4 * 3 * 3) * sizeof(float);
 
     size_t total_mem = global_mem + const_mem;
 
 
-    printf("total mem usage: %zu MB\n", total_mem / (1024 * 1024));
-    */
+    printf("total mem usage: %zu MB\n", total_mem / 1024 / 1024);
+    
 
     // Copy output data from GPU to CPU
     cudaMemcpy(h_output, d_output, output_width * output_height * channels * sizeof(float), cudaMemcpyDeviceToHost);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start1, stop1);
-    printf("self run duration : %f ms\n", milliseconds);
+    printf("self winograd run duration : %f ms\n", milliseconds);
     //save data to file
     fprintf(outputFile, "%f\n", milliseconds);
     //save image
@@ -472,16 +486,14 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
     return;
 }
 
-// Khai báo các ma trận cần sao chép vào constant
-
 
 __global__ void SelfWinogradConvolution(float* input, float* output,
     int input_width, int input_height, int kernel_size, int stride,
     int output_width, int output_height,int channels)
 {
     // PENDING
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+    int row = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
 
     float Win4x4[4][4]; // I
     float New4x4[4][4]; // BT * I
@@ -497,11 +509,18 @@ __global__ void SelfWinogradConvolution(float* input, float* output,
         for (int ch = 0; ch < channels; ch++) {
 
 
-            if (col < output_width && row < output_height && col % 2 == 0 && row % 2 == 0 && col > 0 && row > 0) {
+            if (col < output_width && row < output_height && col > 0 && row > 0) {
 
 
                 for (int i = -1; i < 3; i++) {
                     for (int j = -1; j < 3; j++) {
+                        if (row + i > input_width) {
+                            Win4x4[i + 1][j + 1] = 0.0f;
+                        }
+                        else if (col + j > input_height) {
+                            Win4x4[i + 1][j + 1] = 0.0f;
+                        }
+                        else
                         Win4x4[i + 1][j + 1] = input[((row + i) * input_width + col + j) * channels + ch];
                         // if (row == 100 && col == 100) printf("%d %d %f\n", row + i, col + j, Win4x4[i + 1][j + 1]);
                     }
@@ -606,6 +625,18 @@ __global__ void Convolution(const float* __restrict__  input, float* output,
 
 int main(int argc, const char* argv[]) {
 
+    cudaDeviceProp device;
+    cudaGetDeviceProperties(&device, 0);
+
+    printf("Device name: %s\n", device.name);
+    printf("Device max threads per blocks: %d\n", device.maxThreadsPerBlock);
+    printf("Device max threads per multi processor: %d\n", device.maxThreadsPerMultiProcessor);
+    printf("Device max block per multi processor %d\n", device.maxBlocksPerMultiProcessor);
+    printf("Device num of multi processor: %d\n", device.multiProcessorCount);
+    printf("Device total constant memory: %zu bytes\n", device.totalConstMem);
+    printf("Device total L2 cache size: %zu bytes\n", device.l2CacheSize);
+    printf("Device mem pitch: %zu bytes\n", device.memPitch);
+    printf("Device warp size in thread: %d\n\n", device.warpSize);
     // calculate the memory before using kernel
     size_t freeBytes, totalBytes;
     cudaMemGetInfo(&freeBytes, &totalBytes);
@@ -615,11 +646,23 @@ int main(int argc, const char* argv[]) {
     std::cout << " Free Memory (MB): " << (freeBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
 
-    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_256x256(2)_input_&3x3filter3.txt", "a+");
-    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_256x256(2)_input_&3x3filter3.txt", "a+");
-    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_256x256(2)_input_&3x3filter3.txt", "a+");
-    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_256x256(2)_input_&3x3filter2.txt", "a+");
-    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_256x256(2)_input_&3x3filter2.txt", "a+");
+    // cifar_10 data
+    /*
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_cifar_10_input_&3x3filter.txt", "w+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_cifar_10_input_&3x3filter.txt", "w+");
+    FILE* Algo_Self_Winograd_Data_File = fopen("data/Algo_Winograd_cifar_10_input_&3x3filter.txt", "w+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_cifar_10_input_&3x3filter.txt", "w+");
+    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_cifar_10_input_&3x3filter.txt", "w+");
+    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_cifar_10_input_&3x3filter.txt", "w+");
+    */
+    // tampere_17 file
+
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_tampere_17_input_&3x3filter.txt", "w+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_tampere_17_input_&3x3filter.txt", "w+");
+    FILE* Algo_Self_Winograd_Data_File = fopen("data/Algo_Winograd_tampere_17_input_&3x3filter.txt", "w+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_tampere_17_input_&3x3filter.txt", "w+");
+    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_tampere_17_input_&3x3filter.txt", "w+");
+    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_tampere_17_input_&3x3filter.txt", "w+");
 
     float kernel_template[KERNEL_SIZE][KERNEL_SIZE] = {
         //Emboss
@@ -636,13 +679,13 @@ int main(int argc, const char* argv[]) {
         // {1, 1, 1},
         /// {0, 1, 0}
         // Laplacian
-        // {0, 1, 0},
-        // {1, -4, 1},
-        // {0, 1, 0}
+         {0, 1, 0},
+         {1, -4, 1},
+         {0, 1, 0}
         // Sharpen
-         {0, -1, 0},
-         {-1, 8, -1},
-         {0, -1, 0}
+        // {0, -1, 0},
+        // {-1, 8, -1},
+        // {0, -1, 0}
         // Gauss
         // {1, 2, 1},
         // {2, 4, 2},
@@ -673,8 +716,8 @@ int main(int argc, const char* argv[]) {
 
     // Algo GEMM Testing
     printf("GEMM impl:\n");
-     for (int i = 0; i < 21; i++) {
-    //CudnnRuntimeAlgoGemn("input/128x128_RGB.jpeg", "output/128x128_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
+     for (int i = 0; i < 2; i++) {
+      //  CudnnRuntimeAlgoGemn("input/128x128_RGB.jpeg", "output/128x128_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
     //CudnnRuntimeAlgoGemn("input/128x128_RGB.jpeg", "output/128x128_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
     //  CudnnRuntimeAlgoGemn("input/1024x1024_RGB.jpeg", "output/1024x1024_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
     //  CudnnRuntimeAlgoGemn("input/256x256(2).png", "output/256x256(2)_GEMM.png", kernel_template, Algo_Gemm_Data_File);
@@ -682,31 +725,32 @@ int main(int argc, const char* argv[]) {
   
     // Algo Winograd Testing
     printf("Winograd impl:\n");
-    for (int i = 0; i < 21; i++) {
-    // CudnnRuntimeAlgoWinograd("input/128x128_RGB.jpeg", "output/128x128_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
-     // CudnnRuntimeAlgoWinograd("input/1024x1024_RGB.jpeg", "output/1024x1024_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
-      CudnnRuntimeAlgoWinograd("input/256x256(2).png", "output/256x256(2)_Winograd.png", kernel_template, Algo_Winograd_Data_File);
+    for (int i = 0; i < 2; i++) {
+       // CudnnRuntimeAlgoWinograd("input/128x128_RGB.jpeg", "output/128x128_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
+    //  CudnnRuntimeAlgoWinograd("input/1024x1024_RGB.jpeg", "output/1024x1024_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
+     // CudnnRuntimeAlgoWinograd("input/256x256(2).png", "output/256x256(2)_Winograd.png", kernel_template, Algo_Winograd_Data_File);
     }
    
      // Direct
      printf("Direct impl:\n");
-    for (int i = 0; i < 21; i++) {
-     //   Self_Direct_Convolution_CUDA("input/128x128_RGB.jpeg", "output/128x128_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-     // Self_Direct_Convolution_CUDA("input/1024x1024_RGB.jpeg", "output/1024x1024_Direct.png", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    for (int i = 0; i < 2; i++) {
+       // Self_Direct_Convolution_CUDA("input/128x128_RGB.jpeg", "output/128x128_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+     //Self_Direct_Convolution_CUDA("input/1024x1024_RGB.jpeg", "output/1024x1024_Direct.png", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
      // Self_Direct_Convolution_CUDA("input/256x256(2).png", "output/256x256(2)_Direct.png", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
     }
      
     // Self Winograd
     printf("Self Winograd impl:\n");
-    for (int i = 0; i < 21; i++) {
-          Self_Winograd_Convolution_CUDA("input/256x256(2).png", "output/256x256(2)_Self_Winograd.png", new_h_kernel, KERNEL_SIZE, 1, Self_Winograd_Data_File);
-        //Self_Winograd_Convolution_CUDA("input/1024x1024_RGB.jpeg", "output/1024x1024_Self_Winograd.jpeg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-       // Self_Winograd_Convolution_CUDA("input/128x128_RGB.jpeg", "output/128x128_Self_Winograd.jpeg", new_h_kernel, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    for (int i = 0; i < 2; i++) {
+        //  Self_Winograd_Convolution_CUDA("input/256x256(2).png", "output/256x256(2)_Self_Winograd.png", new_h_kernel, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+       // Self_Winograd_Convolution_CUDA("input/1024x1024_RGB.jpeg", "output/1024x1024_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Self_Winograd_Data_File);
+       // Self_Winograd_Convolution_CUDA("input/128x128_RGB.jpeg", "output_datasets/self_wino/128x128_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Self_Winograd_Data_File);
     }
 
     // Self GEMM
     printf("Self GEMM impl:\n");
-    for (int i = 0; i < 21; i++) {
+    for (int i = 0; i < 2; i++) {
+     // Self_Gemm_Convolution("input/1024x1024_RGB.jpeg", "output/1024x1024_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
      // Self_Gemm_Convolution("input/128x128_RGB.jpeg", "output/128x128_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
     //Self_Gemm_Convolution("input/512x512.jpg", "output/512x512_Self_GEMM.png", new_h_kernel, KERNEL_SIZE, 1, Self_Gemm_Data_File);
     }
@@ -720,8 +764,55 @@ int main(int argc, const char* argv[]) {
     std::cout << " Current Free Memory (MB): " << (currentFreeBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Used Memory (MB): " << (usedBytesAfter / 1024.0 / 1024.0) << std::endl;
 
+
+    // const char* folderPath = "input_datasets/cifar_10/"; // Thay đường dẫn đến thư mục
+    const char* folderPath = "input_datasets/tampere_17/";
+    struct dirent* entry;
+    DIR* dp = opendir(folderPath);
+
+    if (dp == NULL) {
+        perror("opendir");
+        return 1;
+    }
+    while ((entry = readdir(dp))) {
+        // Bỏ qua các mục "." và ".."
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        // Kiểm tra xem mục có phải là tệp không
+        if (entry->d_type == DT_REG) {
+            // cifar_10
+            // char out_path[1024] = "output_datasets/cifar_10/direct/";
+            // char out_path[1024] = "output_datasets/cifar_10/self_gemm/";
+            // char out_path[1024] = "output_datasets/cifar_10/gemm/";
+            // char out_path[1024] = "output_datasets/cifar_10/self_winograd/";
+            // char out_path[1024] = "output_datasets/cifar_10/winograd/";
+            // char in_path[1024] = "input_datasets/cifar_10/";
+
+            // tampere_17
+            // char out_path[1024] = "output_datasets/tampere_17/direct/";
+            // char out_path[1024] = "output_datasets/tampere_17/self_gemm/";
+            // char out_path[1024] = "output_datasets/tampere_17/gemm/";
+             char out_path[1024] = "output_datasets/tampere_17/self_winograd/";
+            // char out_path[1024] = "output_datasets/tampere_17/winograd/";
+             char in_path[1024] = "input_datasets/tampere_17/";
+                        
+            strcat(out_path, entry->d_name);
+            strcat(in_path, entry->d_name);
+            // Self_Winograd_Convolution_CUDA(in_path, out_path, kernel_template, KERNEL_SIZE, 1, Algo_Self_Winograd_Data_File);
+            // Self_Gemm_Convolution(in_path, out_path, kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+            // CudnnRuntimeAlgoGemn(in_path, out_path, kernel_template, Algo_Gemm_Data_File);
+            // CudnnRuntimeAlgoWinograd(in_path, out_path, kernel_template, Algo_Winograd_Data_File);
+            // Self_Direct_Convolution_CUDA(in_path, out_path, kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+        }
+    }
+
+    closedir(dp);
+
     fclose(Algo_Direct_Data_File);
     fclose(Algo_Gemm_Data_File);
     fclose(Algo_Winograd_Data_File);
+    fclose(Algo_Self_Winograd_Data_File);
     fclose(Self_Gemm_Data_File);
 }

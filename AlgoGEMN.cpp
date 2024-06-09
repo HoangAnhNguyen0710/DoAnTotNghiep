@@ -149,7 +149,7 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     cudaMemcpy(h_output, d_output, image_bytes, cudaMemcpyDeviceToHost);
     float cudnnMillisec = 0;
     cudaEventElapsedTime(&cudnnMillisec, start, stop);
-    printf("CUDNN run duration : %f ms\n", cudnnMillisec);
+    printf("CUDNN Gemm run duration : %f ms\n", cudnnMillisec);
     //save data to file
     fprintf(outputFile, "%f\n", cudnnMillisec);
     

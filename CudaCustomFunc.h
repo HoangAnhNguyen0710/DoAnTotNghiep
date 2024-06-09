@@ -32,7 +32,7 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
 void Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
     const int kernel_size, int stride, FILE* outputFile);
 
-__global__ void im2colKernel(const float* __restrict__ input, float* output, int input_height, int input_width, int kernel_size, int stride);
-__global__ void MatrixMultiply(const float* __restrict__ d_kernel, const float* __restrict__ input, float* output, const int input_width, int kernel_size);
-void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float* h_kernel,
+__global__ void im2colKernel(const float* __restrict__ input, float* output, const int input_height, const int input_width, const int kernel_size, const int stride, const int channels);
+__global__ void MatrixMultiply(const float* __restrict__ input, float* output, const int input_width, const int kernel_size, const int channels);
+void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
     int kernel_size, int stride, FILE* outputFile);
