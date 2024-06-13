@@ -647,36 +647,36 @@ int main(int argc, const char* argv[]) {
     std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
 
     // cifar_10 data
-    
-    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_cifar_10_input_&3x3filter.txt", "w+");
-    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_cifar_10_input_&3x3filter.txt", "w+");
-    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_cifar_10_input_&3x3filter.txt", "w+");
-    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_cifar_10_input_&3x3filter.txt", "w+");
-    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_cifar_10_input_&3x3filter.txt", "w+");
-    
+    /*
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_cifar_10_input_&3x3filter.txt", "a+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_cifar_10_input_&3x3filter.txt", "a+");
+    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_cifar_10_input_&3x3filter.txt", "a+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_cifar_10_input_&3x3filter.txt", "a+");
+    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_cifar_10_input_&3x3filter.txt", "a+");
+    */
     // tampere_17 file
     /*
-    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_tampere_17_input_&3x3filter.txt", "w+");
-    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_tampere_17_input_&3x3filter.txt", "w+");
-    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_tampere_17_input_&3x3filter.txt", "w+");
-    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_tampere_17_input_&3x3filter.txt", "w+");
-    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_tampere_17_input_&3x3filter.txt", "w+");
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_tampere_17_input_&3x3filter.txt", "a+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_tampere_17_input_&3x3filter.txt", "a+");
+    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_tampere_17_input_&3x3filter.txt", "a+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_tampere_17_input_&3x3filter.txt", "a+");
+    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_tampere_17_input_&3x3filter.txt", "a+");
     */
     // mnist file
-    /*
-    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_mnist_input_&3x3filter.txt", "w+");
-    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_mnist_input_&3x3filter.txt", "w+");
-    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_mnist_input_&3x3filter.txt", "w+");
-    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_mnist_input_&3x3filter.txt", "w+");
-    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_mnist_input_&3x3filter.txt", "w+");
-    */
+    
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_mnist_input_&3x3filter.txt", "a+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_mnist_input_&3x3filter.txt", "a+");
+    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_mnist_input_&3x3filter.txt", "a+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_mnist_input_&3x3filter.txt", "a+ ");
+    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_mnist_input_&3x3filter.txt", "a+");
+    
     // MLRS_Net file
     /*
-    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_MLRS_Net_input_&3x3filter.txt", "w+");
-    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_MLRS_Net_input_&3x3filter.txt", "w+");
-    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_MLRS_Net_input_&3x3filter.txt", "w+");
-    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_MLRS_Net_input_&3x3filter.txt", "w+");
-    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_MLRS_Net_input_&3x3filter.txt", "w+");
+    FILE* Algo_Gemm_Data_File = fopen("data/Algo_GEMM_MLRS_Net_input_&3x3filter.txt", "a+");
+    FILE* Algo_Winograd_Data_File = fopen("data/Algo_Winograd_MLRS_Net_input_&3x3filter.txt", "a+");
+    FILE* Self_Winograd_Data_File = fopen("data/Self_Winograd_MLRS_Net_input_&3x3filter.txt", "a+");
+    FILE* Algo_Direct_Data_File = fopen("data/Algo_Direct_MLRS_Net_input_&3x3filter.txt", "a+");
+    FILE* Self_Gemm_Data_File = fopen("data/Self_Gemm_MLRS_Net_input_&3x3filter.txt", "a+");
     */
     float kernel_template[KERNEL_SIZE][KERNEL_SIZE] = {
         //Emboss
@@ -779,10 +779,10 @@ int main(int argc, const char* argv[]) {
     std::cout << " Used Memory (MB): " << (usedBytesAfter / 1024.0 / 1024.0) << std::endl;
 
 
-     const char* folderPath = "input_datasets/cifar_10/"; // Thay đường dẫn đến thư mục
+    // const char* folderPath = "input_datasets/cifar_10/"; // Thay đường dẫn đến thư mục
     // const char* folderPath = "input_datasets/tampere_17/";
     // const char* folderPath = "input_datasets/MLRS_Net/";
-    // const char* folderPath = "input_datasets/mnist/";
+     const char* folderPath = "input_datasets/mnist/";
     struct dirent* entry;
     DIR* dp = opendir(folderPath);
 
@@ -803,8 +803,8 @@ int main(int argc, const char* argv[]) {
             // char out_path[1024] = "output_datasets/cifar_10/self_gemm/";
             // char out_path[1024] = "output_datasets/cifar_10/gemm/";
             // char out_path[1024] = "output_datasets/cifar_10/self_winograd/";
-             char out_path[1024] = "output_datasets/cifar_10/winograd/";
-             char in_path[1024] = "input_datasets/cifar_10/";
+            // char out_path[1024] = "output_datasets/cifar_10/winograd/";
+            // char in_path[1024] = "input_datasets/cifar_10/";
 
             // tampere_17
             // char out_path[1024] = "output_datasets/tampere_17/direct/";
@@ -827,8 +827,8 @@ int main(int argc, const char* argv[]) {
             // char out_path[1024] = "output_datasets/mnist/self_gemm/";
             // char out_path[1024] = "output_datasets/mnist/gemm/";
             // char out_path[1024] = "output_datasets/mnist/self_winograd/";
-            // char out_path[1024] = "output_datasets/mnist/winograd/";
-            // char in_path[1024] = "input_datasets/mnist/";
+             char out_path[1024] = "output_datasets/mnist/winograd/";
+             char in_path[1024] = "input_datasets/mnist/";
                         
             strcat(out_path, entry->d_name);
             strcat(in_path, entry->d_name);
