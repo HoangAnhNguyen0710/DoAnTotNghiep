@@ -3,5 +3,5 @@
 
 
 #define CV_LOAD_IMAGE 1
-cv::Mat load_image(const char* image_path);
-void save_image(const char* output_filename, float* buffer, int height, int width);
+cv::Mat load_image(const char* image_path, int channels);
+void save_image(const char* output_filename, float* buffer, int height, int width, int input_channels);

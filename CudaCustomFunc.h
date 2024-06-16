@@ -13,8 +13,9 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
 
+#define TOTAL_CHANNELS 4
 #define KERNEL_SIZE 3
-#define BLOCK_SIZE 32
+#define BLOCK_SIZE 16
 #define checkCUDNN(expression)                               \
   {                                                          \
     cudnnStatus_t status = (expression);                     \
