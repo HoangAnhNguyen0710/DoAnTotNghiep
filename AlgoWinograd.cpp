@@ -16,10 +16,12 @@
 #include "CudaCustomFunc.h"
 
 void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE], FILE* outputFile) {
+    //cv::Mat image = load_multi_channels_bmp_image_from_multi_images(imgName, ".bmp", TOTAL_CHANNELS);
     cv::Mat image = load_image(imgName, TOTAL_CHANNELS);
     const int kernel_size = KERNEL_SIZE;
     const int batch_size = 1;
 
+    
     size_t beforeFreeBytes, beforeTotalBytes;
     cudaMemGetInfo(&beforeFreeBytes, &beforeTotalBytes);
 
@@ -62,9 +64,12 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
         &output_height,
         &output_width);
 
+   // std::cerr << "Input Image: " << image.cols << " x " << image.rows << " x " << image.channels() << " x " << batch_size
+    //    << std::endl;
+
     std::cerr << "Output Image: " << output_height << " x " << output_width << " x " <<  image.channels() << " x " << batch_size
         << std::endl;
-
+    
     cudnnTensorDescriptor_t output_descriptor;
     cudnnCreateTensorDescriptor(&output_descriptor);
     cudnnSetTensor4dDescriptor(output_descriptor,
@@ -86,29 +91,29 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
 
     std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
         << std::endl;
-
+    
     assert(workspace_bytes > 0);
     void* d_workspace{ nullptr };
     cudaMalloc((void**)&d_workspace, workspace_bytes);
 
     long image_bytes = output_batch_size * channels * output_height * output_width * sizeof(float);
     long input_img_bytes = batch_size * (image.rows / batch_size) * image.cols * channels * sizeof(float);
-
+    
     float* d_input{ nullptr };
     cudaMalloc((void**)&d_input, input_img_bytes);
     float* pixelData = image.ptr<float>(0);
     cudaMemcpy(d_input, pixelData, input_img_bytes, cudaMemcpyHostToDevice);
-
+    
     float* d_output{ nullptr };
     cudaMalloc((void**)&d_output, image_bytes);
     cudaMemset(d_output, 0, image_bytes);
-
+    
     float h_kernel[TOTAL_CHANNELS][TOTAL_CHANNELS][kernel_size][kernel_size];
     for (int kernel = 0; kernel < channels; kernel++) {
         for (int ch = 0; ch < channels; ch++) {
             for (int row = 0; row < kernel_size; row++) {
                 for (int column = 0; column < kernel_size; column++) {
-                    if (kernel == ch || kernel > 2)
+                    if (kernel == ch)
                         h_kernel[kernel][ch][row][column] = kernel_template[row][column];
                     else
                         h_kernel[kernel][ch][row][column] = 0.0f;
@@ -162,8 +167,8 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
     fprintf(outputFile, "%f\n", cudnnMillisec);
 
     // Save image
-    save_image(outputImg, h_output, output_height, output_width, TOTAL_CHANNELS);
-
+     save_image(outputImg, h_output, output_height, output_width, TOTAL_CHANNELS);
+    // save_multi_channels_image_to_multi_image(outputImg, h_output, output_height, output_width, channels);
     // Destroy cudnn resources
     delete[] h_output;
     cudaFree(d_kernel);
@@ -178,4 +183,5 @@ void CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_templ
 
     cudnnDestroy(cudnn);
     return;
+    
 }

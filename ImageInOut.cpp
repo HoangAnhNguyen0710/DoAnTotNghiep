@@ -1,7 +1,10 @@
 ﻿#include "ImageInOut.h"
 #include <opencv2/core/core.hpp>
+#include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include <vector>
+#include <string.h>
 
 /*
 cv::Mat load_image(const char* image_path) {
@@ -11,6 +14,81 @@ cv::Mat load_image(const char* image_path) {
     return image;
 }
 */
+
+cv::Mat load_image_grayscale(const char* image_path) {
+    cv::Mat image = cv::imread(image_path, cv::IMREAD_GRAYSCALE);
+    image.convertTo(image, CV_32FC1);
+    cv::normalize(image, image, 0.0, 1.0, cv::NORM_MINMAX);
+    return image;
+}
+
+//update 18/0/2024
+cv::Mat load_multi_channels_bmp_image_from_multi_images(const char* directory, const char* type, int n) {
+    std::vector<cv::Mat> images;
+    images.clear(); // Xóa vector ảnh nếu đã có sẵn
+
+    for (int i = 1; i <= n; ++i) {
+        // Tạo đường dẫn đầy đủ cho file ảnh bằng cách sử dụng std::string
+        std::string filename = std::string(directory) + "_" + std::to_string(i) + std::string(type);
+        cv::Mat img = cv::imread(filename, cv::IMREAD_GRAYSCALE); // Đọc ảnh dưới dạng grayscale
+        if (!img.empty()) {
+            cv::Mat img32f;
+            img.convertTo(img32f, CV_32F); // Chuyển đổi ảnh sang kiểu CV_32F
+            images.push_back(img32f);
+        }
+        else {
+            std::cerr << "Failed to read image: " << filename << std::endl;
+        }
+    }
+
+    cv::Mat mergedImage;
+    if (!images.empty()) {
+        cv::merge(images, mergedImage); // Ghép các kênh lại với nhau
+    }
+    return mergedImage;
+}
+
+//update 18/0/2024
+bool save_multi_channels_image_to_multi_image(const char* output_filename, float* buffer, int height, int width, int channels) {
+    if (!buffer) {
+        std::cerr << "Input buffer is null." << std::endl;
+        return false;
+    }
+
+    try {
+        // Tạo một ảnh từ buffer với dữ liệu kiểu float
+        cv::Mat input_image(height, width, CV_32FC(channels), buffer);
+
+        // Bỏ qua giá trị âm
+        cv::threshold(input_image, input_image, 0, 0, cv::THRESH_TOZERO);
+
+        // Tách ảnh thành các kênh riêng
+        std::vector<cv::Mat> split_channels;
+        cv::split(input_image, split_channels);
+
+        // Lưu mỗi kênh riêng lẻ
+        for (int i = 0; i < split_channels.size(); i++) {
+            // Chuyển đổi mỗi kênh sang kiểu dữ liệu CV_8U để lưu
+            cv::Mat channel_image;
+            split_channels[i].convertTo(channel_image, CV_8UC1, 255.0 / (255.0 - 0.0), 0);
+
+            // Tạo tên file cho mỗi kênh
+            std::string filename = std::string(output_filename) + "_channel_" + std::to_string(i + 1) + ".bmp";
+
+            // Ghi ảnh ra file
+            if (!cv::imwrite(filename, channel_image)) {
+                std::cerr << "Failed to write image to file: " << filename << std::endl;
+                return false;
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Exception occurred: " << e.what() << std::endl;
+        return false;
+    }
+
+    return true;
+}
 
 cv::Mat load_image(const char* image_path, const int channels) {
     // Load the image with OpenCV. We use IMREAD_UNCHANGED to potentially load the alpha channel if present.
@@ -53,24 +131,20 @@ cv::Mat load_image(const char* image_path, const int channels) {
     return batch_image;
 }
 
-/*
 void save_image(const char* output_filename,
     float* buffer,
     int height,
-    int width) {
-    cv::Mat output_image(height, width, CV_32FC3, buffer); // Sử dụng CV_32FC3 cho ảnh 3 kênh
-    //for (int i = 100; i < 103; i++) {
-    //  for (int j = 100; j < 103; j++)
-    //  printf("i%d j %d -> %f\t", i, j, buffer[i * 256 + j]);
-    //}
+    int width, int channels) {
+    cv::Mat output_image(height, width, CV_32FC(channels), buffer); // Sử dụng CV_32FC(N) cho ảnh N kênh (N = {1, 3, 4})
+
     // Make negative values zero.
     cv::threshold(output_image, output_image, 0, 0, cv::THRESH_TOZERO);
     cv::normalize(output_image, output_image, 0.0, 255.0, cv::NORM_MINMAX);
-    output_image.convertTo(output_image, CV_8UC3); // Chuyển đổi sang kiểu dữ liệu CV_32FC3
+    output_image.convertTo(output_image, CV_8UC(channels)); // Chuyển đổi sang kiểu dữ liệu CV_8UC(N)
     cv::imwrite(output_filename, output_image);
-}*/
+}
 
-void save_image(const char* output_filename, float* buffer, int height, int width, int input_channels) {
+void save_image_from_n_channels_to_3_channels(const char* output_filename, float* buffer, int height, int width, int input_channels) {
     if (buffer == nullptr) {
         throw std::runtime_error("Input buffer is null");
     }
@@ -96,7 +170,7 @@ void save_image(const char* output_filename, float* buffer, int height, int widt
 
     // Normalize and convert the image to 8-bit for saving
     cv::normalize(reduced_image, reduced_image, 0, 255, cv::NORM_MINMAX);
-    reduced_image.convertTo(reduced_image, CV_8UC1);
+    reduced_image.convertTo(reduced_image, CV_8UC3);
 
     // Save the image
     if (!cv::imwrite(output_filename, reduced_image)) {
