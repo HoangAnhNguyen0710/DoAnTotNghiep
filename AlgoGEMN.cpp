@@ -14,9 +14,17 @@
 #include "ImageInOut.h"
 #include "CudaCustomFunc.h"
 
-void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE], FILE* outputFile) {
-    // cv::Mat image = load_multi_channels_bmp_image_from_multi_images(imgName, ".bmp", TOTAL_CHANNELS);
-    cv::Mat image = load_image(imgName, TOTAL_CHANNELS);
+float* CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[][KERNEL_SIZE], FILE* outputFile) {
+    cv::Mat image;
+    if (TOTAL_CHANNELS > 3) {
+        image = load_multi_channels_image_from_multi_images(imgName, ".jpg", TOTAL_CHANNELS);
+    }
+    if (TOTAL_CHANNELS == 3) {
+        image = load_image(imgName, TOTAL_CHANNELS);
+    }
+    if (TOTAL_CHANNELS == 1) {
+        image = load_image_grayscale(imgName);
+    }
     const int kernel_size = KERNEL_SIZE;
     const int batch_size = 1;
 
@@ -160,10 +168,14 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     fprintf(outputFile, "%f\n", cudnnMillisec);
 
     // Save image
-     save_image(outputImg, h_output, output_height, output_width, TOTAL_CHANNELS);
-    // save_multi_channels_image_to_multi_image(outputImg, h_output, output_height, output_width, channels);
+    if (TOTAL_CHANNELS > 3) {
+        save_multi_channels_image_to_multi_image(outputImg, h_output, output_height, output_width, channels);
+    }
+    else {
+        save_image(outputImg, h_output, output_height, output_width, TOTAL_CHANNELS);
+    }
     // Destroy cudnn resources
-    delete[] h_output;
+    // delete[] h_output;
     cudaFree(d_kernel);
     cudaFree(d_input);
     cudaFree(d_output);
@@ -175,4 +187,5 @@ void CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_template[
     cudnnDestroyConvolutionDescriptor(convolution_descriptor);
 
     cudnnDestroy(cudnn);
+    return h_output;
 }
