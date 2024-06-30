@@ -30,6 +30,7 @@ __constant__ float d_kernel_const_gemm[TOTAL_CHANNELS][TOTAL_CHANNELS][KERNEL_SI
 __constant__ float d_kernel_const_direct[TOTAL_CHANNELS][TOTAL_CHANNELS][KERNEL_SIZE * KERNEL_SIZE];
 
 
+
 __global__ void MatrixMultiply(const float* __restrict__ input, float* output, const int input_width, const int output_width, const int kernel_size, const int channels) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -76,10 +77,18 @@ __global__ void im2colKernel(const float* __restrict__ input, float* output, con
 }
 
 
-void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
+float* Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
     int kernel_size, int stride, FILE* outputFile) {
-    cv::Mat image = load_image(inputImgName, TOTAL_CHANNELS);
-    // cv::Mat image = load_multi_channels_bmp_image_from_multi_images(inputImgName, ".bmp", TOTAL_CHANNELS);
+    cv::Mat image;
+    if (TOTAL_CHANNELS > 3) {
+        image = load_multi_channels_image_from_multi_images(inputImgName, ".jpg", TOTAL_CHANNELS);
+    }
+    if (TOTAL_CHANNELS == 3) {
+        image = load_image(inputImgName, TOTAL_CHANNELS);
+    }
+    if (TOTAL_CHANNELS == 1) {
+        image = load_image_grayscale(inputImgName);
+    }
 
     size_t beforeFreeBytes, beforeTotalBytes;
     cudaMemGetInfo(&beforeFreeBytes, &beforeTotalBytes);
@@ -126,13 +135,13 @@ void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float 
     cudaMemcpy(d_output, h_output, output_width * output_height * channels * sizeof(float), cudaMemcpyHostToDevice);
     // cudaMemcpy(d_kernel, h_kernel, kernel_size * kernel_size * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpyToSymbol(d_kernel_const_gemm, h_kernel, sizeof(h_kernel), 0, cudaMemcpyHostToDevice);
-
+    int block_size = 16;
     // Define grid and block dimensions for GPU computation
-    dim3 threadsPerBlock(BLOCK_SIZE, h_col_height);
-    dim3 blocksPerGrid((input_width + BLOCK_SIZE - 1) / BLOCK_SIZE, (input_height + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    dim3 threadsPerBlock(block_size, h_col_height);
+    dim3 blocksPerGrid((input_width + block_size - 1) / block_size, (input_height + block_size - 1) / block_size);
 
-    dim3 im2ColBlocksPerGrid((h_col_width + BLOCK_SIZE - 1) / BLOCK_SIZE, (h_col_height + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    dim3 im2ColBlocksPerGrid2((h_col_width + BLOCK_SIZE - 1) /(BLOCK_SIZE), 1, channels);
+    dim3 im2ColBlocksPerGrid((h_col_width + block_size - 1) / block_size, (h_col_height + block_size - 1) / block_size);
+    dim3 im2ColBlocksPerGrid2((h_col_width + block_size - 1) /(block_size), 1, channels);
     cudaEventCreate(&start1);
     cudaEventCreate(&stop1);
     cudaEventRecord(start1);
@@ -145,17 +154,17 @@ void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float 
     cudaEventRecord(stop1);
     cudaEventSynchronize(stop1);
 
-    /*
+    
     size_t afterFreeBytes, afterTotalBytes;
     cudaMemGetInfo(&afterFreeBytes, &afterTotalBytes);
     size_t usedBytes = beforeFreeBytes - afterFreeBytes;
 
     std::cout << " Free Memory (MB): " << (afterFreeBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
-    */
+    
 
     //calculate used memory
-    
+    /*
     size_t d_col_mem = output_height * output_width * kernel_size * kernel_size * channels * sizeof(float);
     size_t d_input_mem = input_width * input_height * channels * sizeof(float);
     size_t d_output_mem = output_width * output_height * channels * sizeof(float);
@@ -165,7 +174,7 @@ void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float 
     size_t total_mem = global_mem + const_mem;
 
     printf("total mem usage: %zu MB\n", total_mem / 1024 / 1024);
-
+    */
     cudaError_t cudaError = cudaGetLastError();
     if (cudaError != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(cudaError));
@@ -181,15 +190,20 @@ void Self_Gemm_Convolution(char* inputImgName, char* outputImgName, const float 
     fprintf(outputFile, "%f\n", milliseconds);
 
     // save image
-    save_image(outputImgName, h_output, output_height, output_width, TOTAL_CHANNELS);
-    // save_multi_channels_image_to_multi_image(outputImgName, h_output, output_height, output_width, channels);
+    if (TOTAL_CHANNELS > 3) {
+        save_multi_channels_image_to_multi_image(outputImgName, h_output, output_height, output_width, channels);
+    }
+    else {
+        save_image(outputImgName, h_output, output_height, output_width, TOTAL_CHANNELS);
+    }
+    
 
     // Cleanup
     // cudaFree(d_kernel);
     cudaFree(d_col);
     cudaFree(d_input);
     cudaFree(d_output);
-    return;
+    return h_output;
 }
 const float BT[4][4] = {
     {1, 0, -1, 0},
@@ -248,14 +262,22 @@ __constant__ float Gt_constant[3][4];
 // Khai báo ma trận biến đổi U của kernel (U = G * F * GT)
 __constant__ float U_constant[TOTAL_CHANNELS][TOTAL_CHANNELS][4][4];
 
-void Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
+float* Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
     const int kernel_size, int stride, FILE* outputFile) {
-    cv::Mat image = load_image(inputImgName, TOTAL_CHANNELS);
-    // cv::Mat image = load_multi_channels_bmp_image_from_multi_images(inputImgName, ".bmp", TOTAL_CHANNELS);
-    /*
+    cv::Mat image;
+    if (TOTAL_CHANNELS > 3) {
+        image = load_multi_channels_image_from_multi_images(inputImgName, ".jpg", TOTAL_CHANNELS);
+    }
+    if (TOTAL_CHANNELS == 3) {
+        image = load_image(inputImgName, TOTAL_CHANNELS);
+    }
+    if (TOTAL_CHANNELS == 1) {
+        image = load_image_grayscale(inputImgName);
+    }
+    
     size_t beforeFreeBytes, beforeTotalBytes;
     cudaMemGetInfo(&beforeFreeBytes, &beforeTotalBytes);
-    */
+    
     float* h_input = image.ptr<float>(0);
     
     cudaEvent_t start1, stop1;
@@ -314,15 +336,15 @@ void Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const
     // Im2winConvolution << <blocksPerGrid, threadsPerBlock, sharedMemSize >> > (d_input, d_kernel, d_output, input_width, input_height, kernel_size, 1, output_width, output_height);
     cudaEventRecord(stop1);
     cudaEventSynchronize(stop1);
-    /*
+    
     size_t afterFreeBytes, afterTotalBytes;
     cudaMemGetInfo(&afterFreeBytes, &afterTotalBytes);
     size_t usedBytes = beforeFreeBytes - afterFreeBytes;
 
     std::cout << " Free Memory (MB): " << (afterFreeBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
-    */
-
+    
+    /*
     size_t d_input_mem = input_width * input_height * channels * sizeof(float);
     size_t d_output_mem = output_width * output_height * channels * sizeof(float);
     size_t global_mem = d_input_mem + d_output_mem;
@@ -331,7 +353,7 @@ void Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const
     size_t total_mem = global_mem + const_mem;
 
     printf("total mem usage: %zu MB\n", total_mem / 1024 / 1024 );
-    
+    */
 
     // Copy output data from GPU to CPU
     cudaMemcpy(h_output, d_output, output_width * output_height * channels * sizeof(float), cudaMemcpyDeviceToHost);
@@ -341,26 +363,38 @@ void Self_Direct_Convolution_CUDA(char* inputImgName, char* outputImgName, const
     //save data to file
     fprintf(outputFile, "%f\n", milliseconds);
     //save image
-    save_image(outputImgName, h_output, output_height, output_width, TOTAL_CHANNELS);
-    // save_multi_channels_image_to_multi_image(outputImgName, h_output, output_height, output_width, channels);
+    if (TOTAL_CHANNELS > 3) {
+        save_multi_channels_image_to_multi_image(outputImgName, h_output, output_height, output_width, channels);
+    }
+    else {
+        save_image(outputImgName, h_output, output_height, output_width, TOTAL_CHANNELS);
+    }
     // printf("size %d\n", output_width * output_height * channels * sizeof(float));
     // Cleanup
     cudaFree(d_input);
     // cudaFree(d_kernel);
     cudaFree(d_output);
-    return;
+    return h_output;
 }
 
 
 
-void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
+float* Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, const float kernel_template[][KERNEL_SIZE],
     int kernel_size, int stride, FILE* outputFile) {
-     cv::Mat image = load_image(inputImgName, TOTAL_CHANNELS);
-    // cv::Mat image = load_multi_channels_bmp_image_from_multi_images(inputImgName, ".bmp", TOTAL_CHANNELS);
-    /*
+    cv::Mat image;
+    if (TOTAL_CHANNELS > 3) {
+        image = load_multi_channels_image_from_multi_images(inputImgName, ".jpg", TOTAL_CHANNELS);
+    }
+    if (TOTAL_CHANNELS == 3) {
+        image = load_image(inputImgName, TOTAL_CHANNELS);
+    }
+    if (TOTAL_CHANNELS == 1) {
+        image = load_image_grayscale(inputImgName);
+    }
+    
     size_t freeBytes, totalBytes;
     cudaMemGetInfo(&freeBytes, &totalBytes);
-    */
+    
 
     float F[3][3]; // F
     float GF[4][3]; // G * F 
@@ -396,7 +430,7 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
 
     // Define grid and block dimensions for GPU computation
     dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 blocksPerGrid((output_width + BLOCK_SIZE - 1) /( 2 * BLOCK_SIZE ), (output_height + BLOCK_SIZE - 1) / ( BLOCK_SIZE), channels);
+    dim3 blocksPerGrid((output_width + BLOCK_SIZE - 1) /( 2 * BLOCK_SIZE ), (output_height + BLOCK_SIZE - 1) / ( 2 * BLOCK_SIZE), channels);
     cudaEventCreate(&start1);
     cudaEventCreate(&stop1);
     cudaEventRecord(start1);
@@ -455,7 +489,7 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
         // Thực hiện các xử lý khác hoặc thoát khỏi chương trình nếu cần
     }
     
-    /*
+    
     size_t currentFreeBytes, currentTotalBytes;
     cudaMemGetInfo(&currentFreeBytes, &currentTotalBytes);
     size_t usedBytes = freeBytes - currentFreeBytes;
@@ -463,9 +497,9 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
     std::cout << " Total Memory (MB): " << (totalBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Current Free Memory (MB): " << (currentFreeBytes / 1024.0 / 1024.0) << std::endl;
     std::cout << " Used Memory (MB): " << (usedBytes / 1024.0 / 1024.0) << std::endl;
-    */
+   
 
-    
+    /*
     size_t d_input_mem = input_width * input_height * channels * sizeof(float);
     size_t d_output_mem = output_width * output_height * channels * sizeof(float);
     size_t global_mem = d_input_mem + d_output_mem;
@@ -475,7 +509,7 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
 
 
     printf("total mem usage: %zu MB\n", total_mem / 1024 / 1024);
-    
+    */
 
     // Copy output data from GPU to CPU
     cudaMemcpy(h_output, d_output, output_width * output_height * channels * sizeof(float), cudaMemcpyDeviceToHost);
@@ -485,13 +519,17 @@ void Self_Winograd_Convolution_CUDA(char* inputImgName, char* outputImgName, con
     //save data to file
     fprintf(outputFile, "%f\n", milliseconds);
     //save image
-     save_image(outputImgName, h_output, output_height, output_width, TOTAL_CHANNELS);
-   // save_multi_channels_image_to_multi_image(outputImgName, h_output, output_height, output_width, channels);
+    if (TOTAL_CHANNELS > 3) {
+        save_multi_channels_image_to_multi_image(outputImgName, h_output, output_height, output_width, channels);
+    }
+    else {
+        save_image(outputImgName, h_output, output_height, output_width, TOTAL_CHANNELS);
+    }
 
     // Cleanup
     cudaFree(d_input);
     cudaFree(d_output);
-    return;
+    return h_output;
 }
 
 
@@ -501,17 +539,18 @@ __global__ void SelfWinogradConvolution(float* __restrict__ input, float* output
 {
     // PENDING
     int col = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
-    int row = (blockIdx.y * blockDim.y + threadIdx.y);
+    int row = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
     int kernel_num = blockIdx.z * blockDim.z + threadIdx.z;
 
-    
-    float Win4x4[4][4]; // I
+
+    float Win4x4[4][4] = { 0.0f }; // I
     float New4x4[4][4]; // BT * I
     float V[4][4]; // BT * I * B
     float M[4][4]; // U (*) V
     float ATM[2][4];
     float Out[2][2];
 
+    if (col > output_width || row > output_width) return;
   //  for (int kernel = 0; kernel < channels; kernel++) {
        // output[(row * output_width + col) * channels + kernel_num] = 0.0f;
        // output[(row * output_width + col + 1) * channels + kernel_num] = 0.0f;
@@ -521,7 +560,7 @@ __global__ void SelfWinogradConvolution(float* __restrict__ input, float* output
         float temp[2][2] = { 0.0f };
         for (int ch = 0; ch < channels; ch++) {
 
-            if (col < output_width && row < output_height && col > 0 && row > 0) {
+            if (col < output_width && row < output_height && col > 0 && row > 0 ) {
 
                 for (int i = -1; i < 3; i++) {
                     for (int j = -1; j < 3; j++) {
@@ -532,14 +571,15 @@ __global__ void SelfWinogradConvolution(float* __restrict__ input, float* output
                         else if (col + j > input_width) {
                             Win4x4[i + 1][j + 1] = 0.0f;
                         }
-
+                        
                         else if (col + j < 0) {
                             Win4x4[i + 1][j + 1] = 0.0f;
                         }
                         else if (row + i < 0) {
                             Win4x4[i + 1][j + 1] = 0.0f;
                         }
-                        else*/
+                        else
+                        */
                         Win4x4[i + 1][j + 1] = input[((row + i) * input_width + col + j) * channels + ch];
                     }
                 }
@@ -603,11 +643,10 @@ __global__ void SelfWinogradConvolution(float* __restrict__ input, float* output
             }
             //  }
         }
-        output[((row) * output_width + col) * channels + kernel_num] = temp[0][0];
-        output[((row) * output_width + col + 1) * channels + kernel_num] = temp[0][1];
-        //  output[((row + 1) * output_width + col) * channels + kernel_num] = 0.0f
-        //  output[((row + 1) * output_width + col + 1) * channels + kernel_num] = 0.0f;
-    
+        output[((row - 1) * output_width + col - 1) * channels + kernel_num] = temp[0][0];
+        output[((row - 1) * output_width + col ) * channels + kernel_num] = temp[0][1];
+        output[((row) * output_width + col - 1) * channels + kernel_num] = temp[1][0];
+        output[((row) * output_width + col ) * channels + kernel_num] = temp[1][1];
 }
 
 __global__ void Convolution(const float* __restrict__ input, float* output,
@@ -618,7 +657,7 @@ __global__ void Convolution(const float* __restrict__ input, float* output,
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int kernel_num = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (col >= output_width || row >= output_height || kernel_num >= channels) {
+    if (col > output_width || row > output_height || kernel_num >= channels || col == 0 || row == 0) {
         return;
     }
 
@@ -643,12 +682,48 @@ __global__ void Convolution(const float* __restrict__ input, float* output,
        totalSum += sum;
     }
     
-    int outputPixelIndex = (row * output_width + col) * channels + kernel_num;
+    int outputPixelIndex = ((row - 1) * output_width + col - 1) * channels + kernel_num;
     output[outputPixelIndex] = totalSum;
 }
 
 
+void calculateDifference(float* a, float* b, int width, int height, int channels) {
+    float max_value = 0.0f;
+
+    // Tính phần trăm sai khác dựa trên giá trị tuyệt đối lớn nhất và giá trị tuyệt đối lớn nhất trong cả hai mảng
+    float max_abs = 0.0f;
+    float min_abs = 1000.0f;
+   // float cur_max_val = 0.0f;
+   // float cur_min_val = 0.0f;
+    // Tìm giá trị tuyệt đối lớn nhất trong cả hai mảng
+    for (int ch = 0; ch < channels; ch++) {
+        for (int i = 1; i < width - 1; ++i) {
+            for (int j = 1; j < height - 1; ++j) {
+                float abs_diff = (a[(i * width + j) * channels + ch] - b[(i * width + j) * channels + ch]);
+                //  printf("%f\n", abs_diff);
+                if (abs_diff > max_abs) {
+                    max_abs = abs_diff;
+                }
+
+                if (abs_diff < min_abs) {
+                    min_abs = abs_diff;
+
+                }
+            }
+        }
+    }
+
+    printf("\n max diff: %f min diff %f\n", max_abs, min_abs);
+
+}
+
 int main(int argc, const char* argv[]) {
+
+    float* baselineOutput = NULL;
+    float* WinogradOutput = NULL;
+    float* SelfWinogradOutput = NULL;
+    float* SelfGemmOutput = NULL;
+    float* DirectOutput = NULL;
 
     cudaDeviceProp device;
     cudaGetDeviceProperties(&device, 0);
@@ -731,13 +806,13 @@ int main(int argc, const char* argv[]) {
         // {1, -4, 1},
         // {0, 1, 0}
         // Sharpen
-       // {0, -1, 0},
-       //  {-1, 8, -1},
-       //  {0, -1, 0}
+         {0, -1, 0},
+         {-1, 8, -1},
+         {0, -1, 0}
         // Gauss
-         {1, 2, 1},
-         {2, 4, 2},
-         {1, 2, 1}
+        // {1, 2, 1},
+        // {2, 4, 2},
+        // {1, 2, 1}
         // Sobel by x
         //{-1, 0, 1},
         // {-2, 0, 2},
@@ -764,75 +839,190 @@ int main(int argc, const char* argv[]) {
 
     // Algo GEMM Testing
     printf("GEMM impl:\n");
-     for (int i = 0; i < 5; i++) {
+     for (int i = 0; i < 4; i++) {
+         baselineOutput =
+       //  CudnnRuntimeAlgoGemn("input/128x128_RGB.jpg", "output/128x128_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/32x32.png", "output/32x32_GEMM.png", kernel_template, Algo_Gemm_Data_File);
        //  CudnnRuntimeAlgoGemn("input/128x128_RGB.jpeg", "output/128x128_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
-     //  CudnnRuntimeAlgoGemn("input/32x32.png", "output/32x32_GEMM.png", kernel_template, Algo_Gemm_Data_File);
-    // CudnnRuntimeAlgoGemn("input/128x128_RGB.jpeg", "output/128x128_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
-    // CudnnRuntimeAlgoGemn("input/512x512_RGB.jpeg", "output/512x512_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
-    // CudnnRuntimeAlgoGemn("input/256x256_RGB.jpeg", "output/256x256_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
-     // CudnnRuntimeAlgoGemn("input/1024x1024_RGB.jpeg", "output/1024x1024_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
-     // CudnnRuntimeAlgoGemn("input/256x256(2).png", "output/256x256(2)_GEMM.png", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/512x512_RGB.jpeg", "output/512x512_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/256x256_RGB.jpg", "output/256x256_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
+         CudnnRuntimeAlgoGemn("input/1024x1024_RGB.jpeg", "output/1024x1024_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/256x256(2).png", "output/256x256(2)_GEMM.png", kernel_template, Algo_Gemm_Data_File);
 
        //  CudnnRuntimeAlgoGemn("input/fake_and_real_peppers_ms/fake_and_real_peppers_ms", "output/fake_and_real_peppers_ms/gemm_fake_and_real_peppers_ms", kernel_template, Algo_Gemm_Data_File);
-       //  CudnnRuntimeAlgoGemn("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/Gemm_BUTTERFLY1.bmp", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/Gemm_BUTTERFLY1", kernel_template, Algo_Gemm_Data_File);
        //  CudnnRuntimeAlgoGemn("input/2048x2048_RGB.jpeg", "output/2048x2048_GEMM.jpeg", kernel_template, Algo_Gemm_Data_File);
+
+       //  CudnnRuntimeAlgoGemn("input/128x128_GrayScale.png", "output/128x128_GEMM_gray.jpeg", kernel_template, Algo_Gemm_Data_File);
+
+        //   CudnnRuntimeAlgoGemn("input/256x256_GrayScale.png", "output/256x256_GEMM_gray.jpeg", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/512x512.jpg", "output/512x512_GEMM_gray.jpeg", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/1024x1024_GrayScale.jpg", "output/1024x1024_GEMM_gray.jpeg", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/2048x2048_GrayScale.jpeg", "output/2048x2048_GEMM_gray.jpeg", kernel_template, Algo_Gemm_Data_File);
+
+       //  CudnnRuntimeAlgoGemn("input/5_channels/32x32/fake_and_real_peppers_ms", "output/5_channels/GEMM/32x32_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/5_channels/128x128/oil_painting_ms", "output/5_channels/GEMM/128x128_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/5_channels/256x256/TOY", "output/5_channels/GEMM/256x256_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/5_channels/512x512/feathers_ms", "output/5_channels/GEMM/512x512_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/5_channels/1024x1024/BUTTERFLY1", "output/5_channels/GEMM/1024x1024_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/5_channels/2048x2048/BUTTERFLY1", "output/5_channels/GEMM/2048x2048_GEMM", kernel_template, Algo_Gemm_Data_File);
+
+       //  CudnnRuntimeAlgoGemn("input/8_channels/32x32/fake_and_real_peppers_ms", "output/8_channels/GEMM/32x32_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/8_channels/128x128/oil_painting_ms", "output/8_channels/GEMM/128x128_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/8_channels/256x256/fake_and_real_beers_ms", "output/8_channels/GEMM/256x256_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/8_channels/512x512/oil_painting_ms", "output/8_channels/GEMM/512x512_GEMM", kernel_template, Algo_Gemm_Data_File);
+       //  CudnnRuntimeAlgoGemn("input/8_channels/1024x1024/face_ms", "output/8_channels/GEMM/1024x1024_GEMM", kernel_template, Algo_Gemm_Data_File);
     }
   
     // Algo Winograd Testing
     printf("Winograd impl:\n");
-    for (int i = 0; i < 5; i++) {
-     //  CudnnRuntimeAlgoWinograd("input/32x32.png", "output/32x32_Winograd.png", kernel_template, Algo_Winograd_Data_File);
-     //  CudnnRuntimeAlgoWinograd("input/128x128_RGB.jpeg", "output/128x128_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
-     // CudnnRuntimeAlgoWinograd("input/1024x1024_RGB.jpeg", "output/1024x1024_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
-    // CudnnRuntimeAlgoWinograd("input/2048x2048_RGB.jpeg", "output/2048x2048_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
-     // CudnnRuntimeAlgoWinograd("input/256x256(2).png", "output/256x256(2)_Winograd.png", kernel_template, Algo_Winograd_Data_File);
-      //  CudnnRuntimeAlgoWinograd("input/256x256_RGB.jpeg", "output/256x256_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
+    for (int i = 0; i < 4; i++) {
+        WinogradOutput =
+      //  CudnnRuntimeAlgoWinograd("input/32x32.png", "output/32x32_Winograd.png", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/128x128_RGB.jpg", "output/128x128_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
+    
+        CudnnRuntimeAlgoWinograd("input/1024x1024_RGB.jpeg", "output/1024x1024_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/2048x2048_RGB.jpeg", "output/2048x2048_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/256x256(2).png", "output/256x256(2)_Winograd.png", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/256x256_RGB.jpg", "output/256x256_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
       //  CudnnRuntimeAlgoWinograd("input/512x512_RGB.jpeg", "output/512x512_Winograd.jpeg", kernel_template, Algo_Winograd_Data_File);
       //  CudnnRuntimeAlgoWinograd("input/fake_and_real_peppers_ms/fake_and_real_peppers_ms", "output/fake_and_real_peppers_ms/winograd_fake_and_real_peppers_ms", kernel_template, Algo_Gemm_Data_File);
-       // CudnnRuntimeAlgoWinograd("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/Winograd_BUTTERFLY1.bmp", kernel_template, Algo_Gemm_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/Winograd_BUTTERFLY1", kernel_template, Algo_Gemm_Data_File);
+        
+      //  CudnnRuntimeAlgoWinograd("input/128x128_GrayScale.png", "output/128x128_Winograd_gray.jpeg", kernel_template, Algo_Winograd_Data_File);
+  
+      //    CudnnRuntimeAlgoWinograd("input/256x256_GrayScale.png", "output/256x256_Winograd_gray.jpeg", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/512x512.jpg", "output/512x512_Winograd_gray.jpeg", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/1024x1024_GrayScale.jpg", "output/1024x1024_Winograd_gray.jpeg", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/2048x2048_GrayScale.jpeg", "output/2048x2048_Winograd_gray.jpeg", kernel_template, Algo_Winograd_Data_File);
+
+      //  CudnnRuntimeAlgoWinograd("input/5_channels/32x32/fake_and_real_peppers_ms", "output/5_channels/Winograd/32x32_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/5_channels/128x128/oil_painting_ms", "output/5_channels/Winograd/128x128_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/5_channels/256x256/TOY", "output/5_channels/Winograd/256x256_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/5_channels/512x512/feathers_ms", "output/5_channels/Winograd/512x512_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/5_channels/1024x1024/BUTTERFLY1", "output/5_channels/Winograd/1024x1024_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/5_channels/2048x2048/BUTTERFLY1", "output/5_channels/Winograd/2048x2048_Winograd", kernel_template, Algo_Winograd_Data_File);
+
+      //  CudnnRuntimeAlgoWinograd("input/8_channels/32x32/fake_and_real_peppers_ms", "output/8_channels/Winograd/32x32_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/8_channels/128x128/oil_painting_ms", "output/8_channels/Winograd/128x128_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/8_channels/256x256/fake_and_real_beers_ms", "output/8_channels/Winograd/256x256_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/8_channels/512x512/oil_painting_ms", "output/8_channels/Winograd/512x512_Winograd", kernel_template, Algo_Winograd_Data_File);
+      //  CudnnRuntimeAlgoWinograd("input/8_channels/1024x1024/face_ms", "output/8_channels/Winograd/1024x1024_Winograd", kernel_template, Algo_Winograd_Data_File);
     }
-   
+    calculateDifference(baselineOutput, WinogradOutput, 1022, 1022, TOTAL_CHANNELS);
+    
      // Direct
      printf("Direct impl:\n");
-    for (int i = 0; i < 5; i++) {
-      //  Self_Direct_Convolution_CUDA("input/128x128_RGB.jpeg", "output/128x128_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-       // Self_Direct_Convolution_CUDA("input/256x256_RGB.jpeg", "output/256x256_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-       // Self_Direct_Convolution_CUDA("input/512x512_RGB.jpeg", "output/512x512_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-    //  Self_Direct_Convolution_CUDA("input/32x32.png", "output/32x32_Direct.png", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-    // Self_Direct_Convolution_CUDA("input/1024x1024_RGB.jpeg", "output/1024x1024_Direct.png", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-        Self_Direct_Convolution_CUDA("input/2048x2048_RGB.jpeg", "output/2048x2048_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-     // Self_Direct_Convolution_CUDA("input/256x256(2).png", "output/256x256(2)_Direct.png", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+    for (int i = 0; i < 4; i++) {
+        DirectOutput =
+      //  Self_Direct_Convolution_CUDA("input/128x128_RGB.jpg", "output/128x128_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/256x256_RGB.jpg", "output/256x256_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/512x512_RGB.jpeg", "output/512x512_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/32x32.png", "output/32x32_Direct.png", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+        Self_Direct_Convolution_CUDA("input/1024x1024_RGB.jpeg", "output/1024x1024_Direct.png", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/2048x2048_RGB.jpeg", "output/2048x2048_Direct.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/CS_RGB.tif", "output/CS_RGB.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/256x256(2).png", "output/256x256(2)_Direct.png", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
       //  Self_Direct_Convolution_CUDA("input/fake_and_real_peppers_ms/fake_and_real_peppers_ms", "output/self_direct_fake_and_real_peppers_ms/self_direct_fake_and_real_peppers_ms", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
-      //  Self_Direct_Convolution_CUDA("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/self_direct_BUTTERFLY1.bmp", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/self_direct_BUTTERFLY1", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+
+      //  Self_Direct_Convolution_CUDA("input/128x128_GrayScale.png", "output/128x128_Direct_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+
+      //    Self_Direct_Convolution_CUDA("input/256x256_GrayScale.png", "output/256x256_Direct_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/512x512.jpg", "output/512x512_Direct_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/1024x1024_GrayScale.jpg", "output/1024x1024_Direct_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/2048x2048_GrayScale.jpeg", "output/2048x2048_Direct_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+
+      //  Self_Direct_Convolution_CUDA("input/5_channels/32x32/fake_and_real_peppers_ms", "output/5_channels/Self_Direct/32x32_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/5_channels/128x128/oil_painting_ms", "output/5_channels/Self_Direct/128x128_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/5_channels/256x256/TOY", "output/5_channels/Self_Direct/256x256_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/5_channels/512x512/feathers_ms", "output/5_channels/Self_Direct/512x512_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/5_channels/1024x1024/BUTTERFLY1", "output/5_channels/Self_Direct/1024x1024_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/5_channels/2048x2048/BUTTERFLY1", "output/5_channels/Self_Direct/2048x2048_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+
+      //  Self_Direct_Convolution_CUDA("input/8_channels/32x32/fake_and_real_peppers_ms", "output/8_channels/Self_Direct/32x32_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/8_channels/128x128/oil_painting_ms", "output/8_channels/Self_Direct/128x128_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/8_channels/256x256/fake_and_real_beers_ms", "output/8_channels/Self_Direct/256x256_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/8_channels/512x512/oil_painting_ms", "output/8_channels/Self_Direct/512x512_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
+      //  Self_Direct_Convolution_CUDA("input/8_channels/1024x1024/face_ms", "output/8_channels/Self_Direct/1024x1024_Direct", kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
     }
+
+    calculateDifference(baselineOutput, DirectOutput, 1022, 1022, TOTAL_CHANNELS);
+
     // Self Winograd
     printf("Self Winograd impl:\n");
-    for (int i = 0; i < 5; i++) {
-      //   Self_Winograd_Convolution_CUDA("input/256x256(2).png", "output/256x256(2)_Self_Winograd.png", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
-      // Self_Winograd_Convolution_CUDA("input/1024x1024_RGB.jpeg", "output/1024x1024_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+    for (int i = 0; i < 4; i++) {
+        SelfWinogradOutput =
+      //  Self_Winograd_Convolution_CUDA("input/256x256(2).png", "output/256x256(2)_Self_Winograd.png", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+        Self_Winograd_Convolution_CUDA("input/1024x1024_RGB.jpeg", "output/1024x1024_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
       //  Self_Winograd_Convolution_CUDA("input/2048x2048_RGB.jpeg", "output/2048x2048_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
-      //  Self_Winograd_Convolution_CUDA("input/128x128_RGB.jpeg", "output/128x128_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
-      //  Self_Winograd_Convolution_CUDA("input/256x256_RGB.jpeg", "output/256x256_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
-      // Self_Winograd_Convolution_CUDA("input/512x512_RGB.jpeg", "output/512x512_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/128x128_RGB.jpg", "output/128x128_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      
+      //  Self_Winograd_Convolution_CUDA("input/256x256_RGB.jpg", "output/256x256_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/512x512_RGB.jpeg", "output/512x512_Self_Winograd.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
       //  Self_Winograd_Convolution_CUDA("input/32x32.png", "output/32x32_Self_Winograd.png", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
       //  Self_Winograd_Convolution_CUDA("input/fake_and_real_peppers_ms/fake_and_real_peppers_ms", "output/self_wino_fake_and_real_peppers_ms/self_winograd_fake_and_real_peppers_ms", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
-      //  Self_Winograd_Convolution_CUDA("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/self_wino_BUTTERFLY1.bmp", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/self_wino_BUTTERFLY1", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+
+      //  Self_Winograd_Convolution_CUDA("input/128x128_GrayScale.png", "output/128x128_Self_Winograd_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //    Self_Winograd_Convolution_CUDA("input/256x256_GrayScale.png", "output/256x256_Self_Winograd_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/512x512.jpg", "output/512x512_Self_Winograd_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/1024x1024_GrayScale.jpg", "output/1024x1024_Self_Winograd_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/2048x2048_GrayScale.jpeg", "output/2048x2048_Self_Winograd_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+
+      //  Self_Winograd_Convolution_CUDA("input/5_channels/32x32/fake_and_real_peppers_ms", "output/5_channels/Self_Winograd/32x32_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/5_channels/128x128/oil_painting_ms", "output/5_channels/Self_Winograd/128x128_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/5_channels/256x256/TOY", "output/5_channels/Self_Winograd/256x256_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/5_channels/512x512/feathers_ms", "output/5_channels/Self_Winograd/512x512_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/5_channels/1024x1024/BUTTERFLY1", "output/5_channels/Self_Winograd/1024x1024_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/5_channels/2048x2048/BUTTERFLY1", "output/5_channels/Self_Winograd/2048x2048_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+
+      //  Self_Winograd_Convolution_CUDA("input/8_channels/32x32/fake_and_real_peppers_ms", "output/8_channels/Self_Winograd/32x32_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/8_channels/128x128/oil_painting_ms", "output/8_channels/Self_Winograd/128x128_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/8_channels/256x256/fake_and_real_beers_ms", "output/8_channels/Self_Winograd/256x256_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/8_channels/512x512/oil_painting_ms", "output/8_channels/Self_Winograd/512x512_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
+      //  Self_Winograd_Convolution_CUDA("input/8_channels/1024x1024/face_ms", "output/8_channels/Self_Winograd/1024x1024_Self_Winograd", kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
     }
+
+    calculateDifference(baselineOutput, SelfWinogradOutput, 1022, 1022, TOTAL_CHANNELS);
 
     // Self GEMM
     printf("Self GEMM impl:\n");
-    for (int i = 0; i < 3; i++) {
-     // Self_Gemm_Convolution("input/1024x1024_RGB.jpeg", "output/1024x1024_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
-   // Self_Gemm_Convolution("input/2048x2048_RGB.jpeg", "output/2048x2048_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
-     // Self_Gemm_Convolution("input/128x128_RGB.jpeg", "output/128x128_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
-      //  Self_Gemm_Convolution("input/256x256_RGB.jpeg", "output/256x256_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
-     //  Self_Gemm_Convolution("input/512x512_RGB.jpeg", "output/512x512_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
-    // Self_Gemm_Convolution("input/32x32.png", "output/32x32_Self_GEMM.png", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
-    //Self_Gemm_Convolution("input/512x512.jpg", "output/512x512_Self_GEMM.png", new_h_kernel, KERNEL_SIZE, 1, Self_Gemm_Data_File);
-     //   Self_Gemm_Convolution("input/fake_and_real_peppers_ms/fake_and_real_peppers_ms", "output/self_gemm_fake_and_real_peppers_ms/self_gemm_fake_and_real_peppers_ms", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
-      //  Self_Gemm_Convolution("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/self_gemm_BUTTERFLY1.bmp", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+    for (int i = 0; i < 4; i++) {
+        SelfGemmOutput =
+        Self_Gemm_Convolution("input/1024x1024_RGB.jpeg", "output/1024x1024_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/2048x2048_RGB.jpeg", "output/2048x2048_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/128x128_RGB.jpg", "output/128x128_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+    
+     //   Self_Gemm_Convolution("input/256x256_RGB.jpg", "output/256x256_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/512x512_RGB.jpeg", "output/512x512_Self_GEMM.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/32x32.png", "output/32x32_Self_GEMM.png", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/512x512.jpg", "output/512x512_Self_GEMM.png", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/fake_and_real_peppers_ms/fake_and_real_peppers_ms", "output/self_gemm_fake_and_real_peppers_ms/self_gemm_fake_and_real_peppers_ms", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/5bandMSdataset/BUTTERFLY1", "output/5bandMSdataset/self_gemm_BUTTERFLY1", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+
+      //  Self_Gemm_Convolution("input/128x128_GrayScale.png", "output/128x128_Self_GEMM_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+
+         // Self_Gemm_Convolution("input/256x256_GrayScale.png", "output/256x256_Self_GEMM_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/512x512.jpg", "output/512x512_Self_GEMM_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/1024x1024_GrayScale.jpg", "output/1024x1024_Self_GEMM_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/2048x2048_GrayScale.jpeg", "output/2048x2048_Self_GEMM_gray.jpeg", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+
+      //  Self_Gemm_Convolution("input/5_channels/32x32/fake_and_real_peppers_ms", "output/5_channels/Self_GEMM/32x32_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/5_channels/128x128/oil_painting_ms", "output/5_channels/Self_GEMM/128x128_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/5_channels/256x256/TOY", "output/5_channels/Self_GEMM/256x256_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/5_channels/512x512/feathers_ms", "output/5_channels/Self_GEMM/512x512_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/5_channels/1024x1024/BUTTERFLY1", "output/5_channels/Self_GEMM/1024x1024_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/5_channels/2048x2048/BUTTERFLY1", "output/5_channels/Self_GEMM/2048x2048_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+
+      //  Self_Gemm_Convolution("input/8_channels/32x32/fake_and_real_peppers_ms", "output/8_channels/Self_GEMM/32x32_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/8_channels/128x128/oil_painting_ms", "output/8_channels/Self_GEMM/128x128_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/8_channels/256x256/fake_and_real_beers_ms", "output/8_channels/Self_GEMM/256x256_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/8_channels/512x512/oil_painting_ms", "output/8_channels/Self_GEMM/512x512_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
+      //  Self_Gemm_Convolution("input/8_channels/1024x1024/face_ms", "output/8_channels/Self_GEMM/1024x1024_Self_GEMM", kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
     }
 
+    calculateDifference(baselineOutput, SelfGemmOutput, 1022, 1022, TOTAL_CHANNELS);
 
     size_t currentFreeBytes, currentTotalBytes;
     cudaMemGetInfo(&currentFreeBytes, &currentTotalBytes);
@@ -845,8 +1035,8 @@ int main(int argc, const char* argv[]) {
     /*
     // const char* folderPath = "input_datasets/cifar_10/"; // Thay đường dẫn đến thư mục
     // const char* folderPath = "input_datasets/tampere_17/";
-    // const char* folderPath = "input_datasets/MLRS_Net/";
-     const char* folderPath = "input_datasets/mnist/";
+     const char* folderPath = "input_datasets/MLRS_Net/";
+    // const char* folderPath = "input_datasets/mnist/";
     struct dirent* entry;
     DIR* dp = opendir(folderPath);
 
@@ -883,23 +1073,23 @@ int main(int argc, const char* argv[]) {
             // char out_path[1024] = "output_datasets/MLRS_Net/self_gemm/";
             // char out_path[1024] = "output_datasets/MLRS_Net/gemm/";
             // char out_path[1024] = "output_datasets/MLRS_Net/self_winograd/";
-            // char out_path[1024] = "output_datasets/MLRS_Net/winograd/";
-            // char in_path[1024] = "input_datasets/MLRS_Net/";
+             char out_path[1024] = "output_datasets/MLRS_Net/winograd/";
+             char in_path[1024] = "input_datasets/MLRS_Net/";
 
             // mnist
             // char out_path[1024] = "output_datasets/mnist/direct/";
             // char out_path[1024] = "output_datasets/mnist/self_gemm/";
             // char out_path[1024] = "output_datasets/mnist/gemm/";
             // char out_path[1024] = "output_datasets/mnist/self_winograd/";
-             char out_path[1024] = "output_datasets/mnist/winograd/";
-             char in_path[1024] = "input_datasets/mnist/";
+            // char out_path[1024] = "output_datasets/mnist/winograd/";
+            // char in_path[1024] = "input_datasets/mnist/";
                         
             strcat(out_path, entry->d_name);
             strcat(in_path, entry->d_name);
             // Self_Winograd_Convolution_CUDA(in_path, out_path, kernel_template, KERNEL_SIZE, 1, Self_Winograd_Data_File);
             // Self_Gemm_Convolution(in_path, out_path, kernel_template, KERNEL_SIZE, 1, Self_Gemm_Data_File);
             // CudnnRuntimeAlgoGemn(in_path, out_path, kernel_template, Algo_Gemm_Data_File);
-            // CudnnRuntimeAlgoWinograd(in_path, out_path, kernel_template, Algo_Winograd_Data_File);
+             CudnnRuntimeAlgoWinograd(in_path, out_path, kernel_template, Algo_Winograd_Data_File);
             // Self_Direct_Convolution_CUDA(in_path, out_path, kernel_template, KERNEL_SIZE, 1, Algo_Direct_Data_File);
         }
     }
