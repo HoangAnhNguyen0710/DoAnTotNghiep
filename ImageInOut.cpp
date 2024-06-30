@@ -23,7 +23,7 @@ cv::Mat load_image_grayscale(const char* image_path) {
 }
 
 //update 18/0/2024
-cv::Mat load_multi_channels_bmp_image_from_multi_images(const char* directory, const char* type, int n) {
+cv::Mat load_multi_channels_image_from_multi_images(const char* directory, const char* type, int n) {
     std::vector<cv::Mat> images;
     images.clear(); // Xóa vector ảnh nếu đã có sẵn
 
@@ -104,7 +104,7 @@ cv::Mat load_image(const char* image_path, const int channels) {
     int rows = image.rows;
     int cols = image.cols;
     int originalChannels = image.channels();
-
+  //  printf("%d\n", image.channels());
     // Create a new image with the target number of channels
     cv::Mat expanded_image(rows, cols, CV_MAKETYPE(CV_32F, channels));
 
