@@ -15,7 +15,8 @@
 
 #define TOTAL_CHANNELS 3
 #define KERNEL_SIZE 3
-#define BLOCK_SIZE 16
+#define BLOCK_SIZE 16 
+// #define BLOCK_SIZE 32
 #define checkCUDNN(expression)                               \
   {                                                          \
     cudnnStatus_t status = (expression);                     \

@@ -34,6 +34,7 @@ float* CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_templat
     cudnnHandle_t cudnn;
     cudnnCreate(&cudnn);
 
+    // INPUT DESCRIPTOR
     cudnnTensorDescriptor_t input_descriptor;
     cudnnCreateTensorDescriptor(&input_descriptor);
     cudnnSetTensor4dDescriptor(input_descriptor,
@@ -44,6 +45,7 @@ float* CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_templat
         image.rows / batch_size,  // We divide the rows by batch size to get the original image height
         image.cols);
 
+    // FILTER DESCRIPTOR
     cudnnFilterDescriptor_t kernel_descriptor;
     cudnnCreateFilterDescriptor(&kernel_descriptor);
     cudnnSetFilter4dDescriptor(kernel_descriptor,
@@ -54,6 +56,7 @@ float* CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_templat
         kernel_size,
         kernel_size);
 
+    // CONVOLUTION DESCRIPTOR
     cudnnConvolutionDescriptor_t convolution_descriptor;
     cudnnCreateConvolutionDescriptor(&convolution_descriptor);
     cudnnSetConvolution2dDescriptor(convolution_descriptor,
@@ -70,7 +73,7 @@ float* CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_templat
         &output_height,
         &output_width);
 
-    std::cerr << "Output Image: " << output_height << " x " << output_width << " x " << image.channels() << " x " << batch_size
+    std::cerr << "Output Image: " << output_height << " x " << output_width << " x " << image.channels()
         << std::endl;
 
     cudnnTensorDescriptor_t output_descriptor;
@@ -91,7 +94,6 @@ float* CudnnRuntimeAlgoGemn(char* imgName, char* outputImg, float kernel_templat
         output_descriptor,
         CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
         &workspace_bytes);
-
     assert(workspace_bytes > 0);
     void* d_workspace{ nullptr };
     cudaMalloc((void**)&d_workspace, workspace_bytes);

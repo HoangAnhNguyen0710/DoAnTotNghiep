@@ -75,7 +75,7 @@ float* CudnnRuntimeAlgoWinograd(char* imgName, char* outputImg, float kernel_tem
    // std::cerr << "Input Image: " << image.cols << " x " << image.rows << " x " << image.channels() << " x " << batch_size
     //    << std::endl;
 
-    std::cerr << "Output Image: " << output_height << " x " << output_width << " x " <<  image.channels() << " x " << batch_size
+    std::cerr << "Output Image: " << output_height << " x " << output_width << " x " <<  image.channels()
         << std::endl;
     
     cudnnTensorDescriptor_t output_descriptor;
